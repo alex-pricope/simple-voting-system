@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=dynamodb, s3
+      - DEBUG=1
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  localstack_data:

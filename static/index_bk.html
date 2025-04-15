@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MNL voting</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Fira Code', monospace;
+        }
+        .star {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .star:hover,
+        .star.hovered,
+        .star.selected {
+            color: #f97316; /* orange-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 min-h-screen flex flex-col items-center justify-start p-6">
+<div id="code-entry" class="w-full max-w-xl bg-gray-800 shadow-md rounded-2xl p-6 mt-10">
+    <h2 class="text-2xl font-semibold text-orange-400 mb-4">Enter Your Voting Code</h2>
+    <input type="text" id="votingCode" class="w-full p-3 border rounded-xl mb-3 bg-gray-700 text-white" placeholder="Enter your code..." />
+    <button onclick="validateCode()" class="w-full bg-orange-600 text-white p-3 rounded-xl hover:bg-orange-700 transition">Start Voting</button>
+    <div id="codeError" class="text-red-400 mt-2 hidden">Invalid or already used code.</div>
+</div>
+
+<div id="votingForm" class="w-full max-w-4xl bg-gray-800 shadow-md rounded-2xl p-6 mt-10 hidden">
+    <h2 class="text-3xl font-bold text-orange-400 mb-6">Cast Your Vote</h2>
+
+    <div class="mb-8 p-4 border border-gray-700 rounded-xl bg-gray-900">
+        <h3 class="text-lg text-orange-300 font-semibold mb-2">How Voting Works</h3>
+        <p class="text-sm text-gray-400">
+            Every participant and jury member has received a unique voting code. Once entered, you'll be able to score each team across four categories: <em>Tech / Design / Innovation</em>, <em>Fun / Potential</em>, <em>Quality</em>, and <em>Presentation</em>.
+            Use the star ratings to express your evaluation (1 = Poor, 5 = Excellent). Your input helps determine the winners, so take your time and vote fairly. Thank you!
+        </p>
+    </div>
+
+    <form id="voteForm" class="space-y-6">
+        <!-- Categories dynamically inserted here -->
+        <button type="submit" class="w-full bg-green-600 text-white p-3 rounded-xl hover:bg-green-700 transition">Submit Vote</button>
+    </form>
+</div>
+
+<footer class="mt-12 text-sm text-gray-500">
+    Ingredients[❤️,GO,AWS]: <a href="https://github.com/alex-pricope/simple-voting-system" target="_blank" class="text-orange-400 underline hover:text-orange-300">source code</a>
+</footer>
+
+<script>
+    const categories = [
+        { name: 'Tech / Design / Innovation', description: 'Evaluate the technical implementation, design aesthetics, and innovative aspects.' },
+        { name: 'Fun / Potential', description: 'Consider how fun, engaging, or promising the project is.' },
+        { name: 'Quality', description: 'Assess the overall quality, polish, and stability of the project.' },
+        { name: 'Presentation', description: 'Review the clarity, delivery, and effectiveness of the presentation.' }
+    ];
+
+    const teams = {
+        'Team Alpha': ['Alice', 'Alex'],
+        'Team Beta': ['Ben', 'Bella'],
+        'Team Gamma': ['George', 'Grace'],
+        'Team Delta': ['Diana', 'David']
+    };
+
+    const tooltips = ['Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+
+    function validateCode() {
+        // TEMP: skip API validation for testing
+        document.getElementById('code-entry').classList.add('hidden');
+        document.getElementById('votingForm').classList.remove('hidden');
+        renderVotingForm();
+    }
+
+    function renderVotingForm() {
+        const form = document.getElementById('voteForm');
+        const submitBtn = form.querySelector('button[type="submit"]');
+
+        categories.forEach((category, catIndex) => {
+            const section = document.createElement('div');
+            section.className = 'border-t border-gray-700 pt-4';
+
+            const title = document.createElement('h3');
+            title.className = 'text-xl font-bold text-orange-400 mb-1';
+            title.textContent = `Category: ${category.name}`;
+            section.appendChild(title);
+
+            const description = document.createElement('p');
+            description.className = 'italic text-sm text-orange-300 mb-4';
+            description.textContent = category.description;
+            section.appendChild(description);
+
+            Object.entries(teams).forEach(([teamName, members], teamIndex) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'mb-4';
+
+                const label = document.createElement('label');
+                label.className = 'block text-lg font-semibold text-white mb-1';
+                label.innerHTML = `<code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">${teamName}</code>`;
+                wrapper.appendChild(label);
+
+                const membersText = document.createElement('p');
+                membersText.className = 'text-sm text-gray-400 mb-1';
+                membersText.textContent = `Members: ${members.join(', ')}`;
+                wrapper.appendChild(membersText);
+
+                const starContainer = document.createElement('div');
+                starContainer.className = 'flex space-x-2';
+
+                for (let i = 1; i <= 5; i++) {
+                    const star = document.createElement('span');
+                    star.className = 'star text-gray-600 text-4xl';
+                    star.innerHTML = '&#9733;';
+                    star.title = tooltips[i - 1];
+                    star.dataset.value = i;
+                    star.addEventListener('mouseenter', () => highlightStars(starContainer, i));
+                    star.addEventListener('mouseleave', () => resetStars(starContainer));
+                    star.addEventListener('click', () => selectStars(starContainer, catIndex, teamIndex, i));
+                    starContainer.appendChild(star);
+                }
+
+                wrapper.appendChild(starContainer);
+                section.appendChild(wrapper);
+            });
+
+            form.insertBefore(section, submitBtn);
+        });
+    }
+
+    function highlightStars(container, value) {
+        const stars = container.querySelectorAll('.star');
+        stars.forEach((star, index) => {
+            star.classList.toggle('hovered', index < value);
+        });
+    }
+
+    function resetStars(container) {
+        const stars = container.querySelectorAll('.star');
+        stars.forEach(star => star.classList.remove('hovered'));
+    }
+
+    const selectedRatings = {};
+
+    function selectStars(container, catIndex, teamIndex, value) {
+        const key = `category${catIndex + 1}_team${teamIndex + 1}`;
+        selectedRatings[key] = value;
+
+        const stars = container.querySelectorAll('.star');
+        stars.forEach((star, index) => {
+            star.classList.toggle('selected', index < value);
+        });
+    }
+
+    document.getElementById('voteForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const voteData = { ...selectedRatings };
+        voteData.code = document.getElementById('votingCode').value;
+
+        fetch('/api/submit-vote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(voteData)
+        })
+            .then(res => {
+                if (res.ok) {
+                    document.getElementById('votingForm').innerHTML = '<div class="text-center text-green-400 text-xl font-semibold">Thank you for voting!</div>';
+                } else {
+                    alert('There was a problem submitting your vote.');
+                }
+            });
+    });
+</script>
+</body>
+</html>
