@@ -42,12 +42,13 @@ func (s *Server) Start() {
 		TableName: s.config.TableNameCodes,
 	}
 
-	// Register any controller here
+	//Register controllers
 	votingController := controllers.NewVotingController(codesStorage)
 	votingController.RegisterRoutes(r)
 	adminController := controllers.NewAdminController(codesStorage)
 	adminController.RegisterRoutes(r)
 
+	//Do not run labda helper locally
 	if os.Getenv("APP_ENV") == "local" {
 		startLocal(r, s.config.Port)
 	} else {

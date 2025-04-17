@@ -1,3 +1,10 @@
+// @title Simple Voting System API
+// @version 1.0
+// @description Backend API for managing voting and admin functionality
+
+// @securityDefinitions.apikey AdminToken
+// @in header
+// @name x-admin-token
 package main
 
 import (

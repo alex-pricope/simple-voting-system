@@ -22,6 +22,7 @@ type CodeValidationResponse struct {
 	Category  string    `json:"category"`
 	Used      bool      `json:"used,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
+	Code      string    `json:"code,omitempty"`
 }
 
 func TransformVotingCodeToValidationResponse(vc *storage.VotingCode) CodeValidationResponse {
@@ -30,5 +31,6 @@ func TransformVotingCodeToValidationResponse(vc *storage.VotingCode) CodeValidat
 		Category:  vc.Category,
 		Used:      vc.Used,
 		CreatedAt: vc.CreatedAt,
+		Code:      vc.Code,
 	}
 }

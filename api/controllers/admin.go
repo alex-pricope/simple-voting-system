@@ -1,9 +1,5 @@
 package controllers
 
-// @securityDefinitions.apikey AdminToken
-// @in header
-// @name x-admin-token
-
 import (
 	"github.com/alex-pricope/simple-voting-system/api/models"
 	"github.com/alex-pricope/simple-voting-system/api/transport"
@@ -12,20 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/matoous/go-nanoid/v2"
 	"net/http"
-	"os"
 	"time"
 )
 
-var alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-var validCategories = map[models.VotingCategory]string{
-	models.CategoryGrandJury:     "grand_jury",
-	models.CategoryOtherTeam:     "other_team",
-	models.CategoryGeneralPublic: "general_public",
-}
-
 func generateShortCode() string {
-	code, err := gonanoid.Generate(alphabet, 5)
+	code, err := gonanoid.Generate(models.Alphabet, 5)
 	if err != nil {
 		logging.Log.Errorf("ADMIN: failed to generate code: %v", err)
 		return "ERROR"
@@ -43,19 +30,8 @@ func NewAdminController(s storage.Storage) *AdminController {
 	}
 }
 
-func adminAuthMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := c.GetHeader("x-admin-token")
-		if token != os.Getenv("ADMIN_TOKEN") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-		c.Next()
-	}
-}
-
 func (c *AdminController) RegisterRoutes(r *transport.Router) {
-	admin := r.Group("/admin", adminAuthMiddleware())
+	admin := r.Group("/admin", transport.AdminAuthMiddleware())
 
 	admin.GET("/codes", c.listCodes)
 	admin.POST("/codes", c.createCode)
@@ -103,7 +79,7 @@ func (c *AdminController) createCode(g *gin.Context) {
 		return
 	}
 
-	if _, ok := validCategories[models.VotingCategory(req.Category)]; !ok {
+	if _, ok := models.ValidCategories[models.VotingCategory(req.Category)]; !ok {
 		g.JSON(http.StatusBadRequest, gin.H{"error": "invalid category"})
 		logging.Log.Warnf("ADMIN: attempted to create code with invalid category: %s", req.Category)
 		return
@@ -191,8 +167,8 @@ func (c *AdminController) resetVotes(g *gin.Context) {
 // @Success 200 {array} map[string]string
 // @Router /admin/categories [get]
 func (c *AdminController) listCategories(g *gin.Context) {
-	categories := make([]gin.H, 0, len(validCategories))
-	for k, label := range validCategories {
+	categories := make([]gin.H, 0, len(models.ValidCategories))
+	for k, label := range models.ValidCategories {
 		categories = append(categories, gin.H{
 			"key":   string(k),
 			"label": label,
@@ -214,7 +190,7 @@ func (c *AdminController) listCategories(g *gin.Context) {
 // @Router /admin/codes/{category} [get]
 func (c *AdminController) getCodesByCategory(g *gin.Context) {
 	category := g.Param("category")
-	if _, ok := validCategories[models.VotingCategory(category)]; !ok {
+	if _, ok := models.ValidCategories[models.VotingCategory(category)]; !ok {
 		logging.Log.Warnf("ADMIN: invalid category requested: %s", category)
 		g.JSON(http.StatusBadRequest, gin.H{"error": "invalid category"})
 		return
