@@ -1,0 +1,5 @@
+storage:
+  tableNameCodes: "VotingCodes"
+  tableNameVotes: "Votes"
+server:
+  port: 8080
