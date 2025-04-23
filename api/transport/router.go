@@ -3,8 +3,8 @@ package transport
 import (
 	"github.com/alex-pricope/simple-voting-system/logging"
 	"github.com/gin-gonic/gin"
-	"github.com/swaggo/files"
-	"github.com/swaggo/gin-swagger"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"net/http"
 	"os"
 )
@@ -12,12 +12,14 @@ import (
 func NewRouter(ginMode string) *gin.Engine {
 	gin.SetMode(ginMode)
 	engine := gin.New()
-	engine.Use(CORSMiddleware(), NoRouteHandler())
+	engine.Use(CORSMiddleware())
 
 	//Bypass swagger for non-local
 	if os.Getenv("APP_ENV") == "local" {
 		engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	}
+
+	engine.NoRoute(NoRouteHandler())
 
 	return engine
 }
