@@ -23,10 +23,10 @@ func (c *TeamMetaController) RegisterRoutes(engine *gin.Engine) {
 	group := engine.Group("/api/meta/teams")
 
 	group.GET("", c.getAll)
-	group.GET("/:id", c.get, transport.AdminAuthMiddleware())
-	group.POST("", c.create, transport.AdminAuthMiddleware())
-	group.PUT("/:id", c.update, transport.AdminAuthMiddleware())
-	group.DELETE("/:id", c.delete, transport.AdminAuthMiddleware())
+	group.GET("/:id", transport.AdminAuthMiddleware(), c.get)
+	group.POST("", transport.AdminAuthMiddleware(), c.create)
+	group.PUT("/:id", transport.AdminAuthMiddleware(), c.update)
+	group.DELETE("/:id", transport.AdminAuthMiddleware(), c.delete)
 }
 
 // @Summary Get all teams
