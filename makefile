@@ -3,7 +3,7 @@ BUILD_DIR=build
 LAMBDA_BINARY=bootstrap
 ZIP_FILE=$(BUILD_DIR)/lambda.zip
 
-.PHONY: build-lambda build-lambda-arm test clean pack up wait-localstack run-local
+.PHONY: build-lambda build-lambda-arm test clean pack up wait-localstack run-local swag-init
 
 # Build the Go binary for Lambda (linux target, no CGO)
 build-lambda:
@@ -24,10 +24,12 @@ up:
 	docker compose up -d
 
 # Run the API locally with Swagger enabled
-run-local: test
+run-local: swag-init test
+	APP_ENV=local go run main.go
+
+swag-init:
 	rm -rf docs
 	swag init
-	APP_ENV=local go run main.go
 
 # Package Lambda binary after tests pass
 pack: test build-lambda-arm
