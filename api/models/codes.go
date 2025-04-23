@@ -13,10 +13,6 @@ const (
 	CategoryGeneralPublic VotingCategory = "general_public"
 )
 
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
 type CodeValidationResponse struct {
 	Valid     bool      `json:"valid"`
 	Category  string    `json:"category"`
@@ -25,9 +21,30 @@ type CodeValidationResponse struct {
 	Code      string    `json:"code,omitempty"`
 }
 
-func TransformVotingCodeToValidationResponse(vc *storage.VotingCode) CodeValidationResponse {
-	return CodeValidationResponse{
+type CreateCodeRequest struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+}
+
+type CodeResponse struct {
+	Category  string    `json:"category"`
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"created_at"`
+	Used      bool      `json:"used"`
+}
+
+func TransformVotingCodeToValidationResponse(vc *storage.VotingCode) *CodeValidationResponse {
+	return &CodeValidationResponse{
 		Valid:     true,
+		Category:  vc.Category,
+		Used:      vc.Used,
+		CreatedAt: vc.CreatedAt,
+		Code:      vc.Code,
+	}
+}
+
+func TransformVotingCodeToCodeResponse(vc *storage.VotingCode) *CodeResponse {
+	return &CodeResponse{
 		Category:  vc.Category,
 		Used:      vc.Used,
 		CreatedAt: vc.CreatedAt,

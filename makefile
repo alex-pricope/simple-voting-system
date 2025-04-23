@@ -3,7 +3,7 @@ BUILD_DIR=build
 LAMBDA_BINARY=bootstrap
 ZIP_FILE=$(BUILD_DIR)/lambda.zip
 
-.PHONY: build-lambda build-lambda-arm test clean pack up wait-localstack run-local swag-init
+.PHONY: build-lambda build-lambda-arm test clean pack up wait-localstack run-local swag-init build lint
 
 # Build the Go binary for Lambda (linux target, no CGO)
 build-lambda:
@@ -17,7 +17,7 @@ build-lambda-arm:
 	cp config.yaml $(BUILD_DIR)/
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o $(BUILD_DIR)/$(LAMBDA_BINARY) main.go
 
-test: up wait-localstack
+test: lint up wait-localstack
 	go test -v ./...
 
 up:
@@ -50,3 +50,10 @@ wait-localstack:
 			exit 1; \
 		fi; \
 	done
+
+## Run static analysis using golangci-lint
+lint:
+	golangci-lint run ./...
+
+build: lint
+	go build -o build/$(APP_NAME) main.go

@@ -45,6 +45,7 @@ func ReadConfig() *Config {
 	return conf
 }
 
+//nolint:unused
 func getString(name string) string {
 	if viper.IsSet(name) {
 		v := viper.GetString(name)
@@ -55,6 +56,7 @@ func getString(name string) string {
 	return ""
 }
 
+//nolint:unused
 func getInt(name string) int {
 	if viper.IsSet(name) {
 		v := viper.GetInt(name)
@@ -65,6 +67,7 @@ func getInt(name string) int {
 	return -1
 }
 
+//nolint:unused
 func getInt32(name string) int32 {
 	if viper.IsSet(name) {
 		v := viper.GetInt32(name)
@@ -75,6 +78,7 @@ func getInt32(name string) int32 {
 	return -1
 }
 
+//nolint:unused
 func getBool(name string) bool {
 	if viper.IsSet(name) {
 		v := viper.GetBool(name)
@@ -85,6 +89,7 @@ func getBool(name string) bool {
 	return false
 }
 
+//nolint:unused
 func getIntOrDefault(name string, def int) int {
 	if viper.IsSet(name) {
 		v := viper.GetInt(name)
@@ -95,6 +100,7 @@ func getIntOrDefault(name string, def int) int {
 	return def
 }
 
+//nolint:unused
 func getBoolOrDefault(name string, def bool) bool {
 	if viper.IsSet(name) {
 		v := viper.GetBool(name)
@@ -105,6 +111,7 @@ func getBoolOrDefault(name string, def bool) bool {
 	return def
 }
 
+//nolint:unused
 func getStringOrDefault(name string, def string) string {
 	if viper.IsSet(name) {
 		v := viper.GetString(name)

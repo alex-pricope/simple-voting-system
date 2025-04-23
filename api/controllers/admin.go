@@ -28,6 +28,7 @@ func (c *AdminController) RegisterRoutes(engine *gin.Engine) {
 	group.POST("/codes", c.createCode)
 	group.DELETE("/codes/:code", c.deleteCode)
 	group.POST("/codes/reset", c.resetVotes)
+	group.POST("/codes/:code/reset", c.resetCode)
 	group.GET("/categories", c.listCategories)
 	group.GET("/codes/:category", c.getCodesByCategory)
 }
@@ -37,19 +38,23 @@ func (c *AdminController) RegisterRoutes(engine *gin.Engine) {
 // @Summary List all voting codes
 // @Tags admin
 // @Produce json
-// @Success 200 {array} storage.VotingCode
+// @Success 200 {array} models.CodeResponse
 // @Failure 500 {object} models.ErrorResponse
 // @Router /api/admin/codes [get]
 func (c *AdminController) listCodes(g *gin.Context) {
 	codes, err := c.codesStorage.GetAll(g.Request.Context())
 	if err != nil {
 		logging.Log.Errorf("ADMIN: failed to list codes: %v", err)
-		g.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		g.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	logging.Log.Infof("ADMIN: listed %d codes", len(codes))
-	g.JSON(http.StatusOK, codes)
+	responseCodes := make([]*models.CodeResponse, 0, len(codes))
+	for _, code := range codes {
+		responseCodes = append(responseCodes, models.TransformVotingCodeToCodeResponse(code))
+	}
+	logging.Log.Infof("ADMIN: listed %d codes", len(responseCodes))
+	g.JSON(http.StatusOK, responseCodes)
 }
 
 // @Security AdminToken
@@ -59,19 +64,19 @@ func (c *AdminController) listCodes(g *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body models.CreateCodeRequest true "Create Code Request"
-// @Success 200 {array} storage.VotingCode
+// @Success 200 {array} models.CodeResponse
 // @Failure 400 {object} models.ErrorResponse
 // @Failure 500 {object} models.ErrorResponse
 // @Router /api/admin/codes [post]
 func (c *AdminController) createCode(g *gin.Context) {
 	var req models.CreateCodeRequest
 	if err := g.ShouldBindJSON(&req); err != nil || req.Category == "" || req.Count < 1 {
-		g.JSON(http.StatusBadRequest, gin.H{"error": "invalid request, missing category or count"})
+		g.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request, missing category or count"})
 		return
 	}
 
 	if _, ok := models.ValidCategories[models.VotingCategory(req.Category)]; !ok {
-		g.JSON(http.StatusBadRequest, gin.H{"error": "invalid category"})
+		g.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid category"})
 		logging.Log.Warnf("ADMIN: attempted to create code with invalid category: %s", req.Category)
 		return
 	}
@@ -92,7 +97,11 @@ func (c *AdminController) createCode(g *gin.Context) {
 		}
 	}
 
-	g.JSON(http.StatusOK, codes)
+	responseCodes := make([]*models.CodeResponse, 0, len(codes))
+	for _, code := range codes {
+		responseCodes = append(responseCodes, models.TransformVotingCodeToCodeResponse(code))
+	}
+	g.JSON(http.StatusOK, responseCodes)
 }
 
 // @Security AdminToken
@@ -108,12 +117,12 @@ func (c *AdminController) createCode(g *gin.Context) {
 func (c *AdminController) deleteCode(g *gin.Context) {
 	code := g.Param("code")
 	if code == "" {
-		g.JSON(http.StatusBadRequest, gin.H{"error": "missing code"})
+		g.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "missing code"})
 		return
 	}
 	if err := c.codesStorage.Delete(g.Request.Context(), code); err != nil {
 		logging.Log.Errorf("ADMIN: failed to delete code %s: %v", code, err)
-		g.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		g.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 	logging.Log.Infof("ADMIN: deleted code: %s", code)
@@ -132,15 +141,15 @@ func (c *AdminController) resetVotes(g *gin.Context) {
 	codes, err := c.codesStorage.GetAll(g.Request.Context())
 	if err != nil {
 		logging.Log.Errorf("ADMIN: failed to get codes for reset: %v", err)
-		g.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		g.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	updated := 0
-	for _, code := range codes {
-		code.Used = false
-		if err := c.codesStorage.Put(g.Request.Context(), code); err != nil {
-			logging.Log.Errorf("ADMIN: failed to reset code %s: %v", code.Code, err)
+	for _, voteCode := range codes {
+		voteCode.Used = false
+		if err := c.codesStorage.MarkUnused(g.Request.Context(), voteCode.Code); err != nil {
+			logging.Log.Errorf("ADMIN: failed to reset code %s: %v", voteCode.Code, err)
 		} else {
 			updated++
 		}
@@ -148,6 +157,42 @@ func (c *AdminController) resetVotes(g *gin.Context) {
 
 	logging.Log.Infof("ADMIN: reset %d codes", updated)
 	g.JSON(http.StatusOK, gin.H{"message": "All codes reset"})
+}
+
+// @Security AdminToken
+// resetCode godoc
+// @Summary Reset a specific voting code to unused
+// @Tags admin
+// @Produce json
+// @Param code path string true "Voting code"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /api/admin/codes/{code}/reset [post]
+func (c *AdminController) resetCode(g *gin.Context) {
+	code := g.Param("code")
+	if code == "" {
+		g.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "missing code"})
+		return
+	}
+
+	voteCode, err := c.codesStorage.Get(g.Request.Context(), code)
+	if err != nil {
+		logging.Log.Errorf("ADMIN: failed to retrieve code %s for reset: %v", code, err)
+		g.JSON(http.StatusNotFound, models.ErrorResponse{Error: "code not found"})
+		return
+	}
+
+	voteCode.Used = false
+	if err := c.codesStorage.MarkUnused(g.Request.Context(), voteCode.Code); err != nil {
+		logging.Log.Errorf("ADMIN: failed to reset code %s: %v", code, err)
+		g.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to reset code"})
+		return
+	}
+
+	logging.Log.Infof("ADMIN: reset code: %s", code)
+	g.JSON(http.StatusOK, gin.H{"reset": code})
 }
 
 // @Security AdminToken
@@ -175,7 +220,7 @@ func (c *AdminController) listCategories(g *gin.Context) {
 // @Tags admin
 // @Produce json
 // @Param category path string true "Voting category"
-// @Success 200 {array} storage.VotingCode
+// @Success 200 {array} models.CodeResponse
 // @Failure 400 {object} models.ErrorResponse
 // @Failure 500 {object} models.ErrorResponse
 // @Router /api/admin/codes/{category} [get]
@@ -183,26 +228,31 @@ func (c *AdminController) getCodesByCategory(g *gin.Context) {
 	category := g.Param("category")
 	if _, ok := models.ValidCategories[models.VotingCategory(category)]; !ok {
 		logging.Log.Warnf("ADMIN: invalid category requested: %s", category)
-		g.JSON(http.StatusBadRequest, gin.H{"error": "invalid category"})
+		g.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid category"})
 		return
 	}
 
-	all, err := c.codesStorage.GetAll(g.Request.Context())
+	codes, err := c.codesStorage.GetAll(g.Request.Context())
 	if err != nil {
 		logging.Log.Errorf("ADMIN: failed to get codes: %v", err)
-		g.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		g.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	filtered := make([]*storage.VotingCode, 0)
-	for _, code := range all {
+	for _, code := range codes {
 		if code.Category == category {
 			filtered = append(filtered, code)
 		}
 	}
 
+	responseCodes := make([]*models.CodeResponse, 0, len(filtered))
+	for _, code := range filtered {
+		responseCodes = append(responseCodes, models.TransformVotingCodeToCodeResponse(code))
+	}
+
 	logging.Log.Infof("ADMIN: listed %d codes for category: %s", len(filtered), category)
-	g.JSON(http.StatusOK, filtered)
+	g.JSON(http.StatusOK, responseCodes)
 }
 
 func (c *AdminController) generateShortCode() string {

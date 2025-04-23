@@ -47,6 +47,7 @@ func setupTeamTestController(t *testing.T) (*TeamMetaController, *gin.Engine) {
 
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion("us-east-1"),
+		//nolint:staticcheck
 		config.WithEndpointResolverWithOptions(
 			aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
 				return aws.Endpoint{URL: "http://localhost:4566", HostnameImmutable: true}, nil

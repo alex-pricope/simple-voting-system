@@ -8,6 +8,7 @@ import (
 	"github.com/alex-pricope/simple-voting-system/storage"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -68,14 +69,18 @@ func (c *VotingController) registerVote(g *gin.Context) {
 		}
 		if err := c.votesStorage.Create(g.Request.Context(), vote); err != nil {
 			logging.Log.Errorf("failed to create vote: %v", err)
-			g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not save vote"})
+			if strings.Contains(err.Error(), "ConditionalCheckFailedException") {
+				g.JSON(http.StatusConflict, &models.ErrorResponse{Error: "vote already exists or was submitted before"})
+			} else {
+				g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not save vote"})
+			}
 			return
 		}
 	}
 
 	// Mark the code as used
 	votingCode.Used = true
-	if err := c.codesStorage.Put(g.Request.Context(), votingCode); err != nil {
+	if err := c.codesStorage.MarkUsed(g.Request.Context(), votingCode.Code); err != nil {
 		logging.Log.Errorf("failed to mark code as used: %v", err)
 		g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not mark code as used"})
 		return

@@ -33,10 +33,12 @@ Of course, a real API should be versioned as well.
 
 ### Admin Group
 The admin group is used to manage the initial voting codes.
-* `POST : /api/admin/codes` - private -
-* `GET : /api/admin/codes` - private -
-* `GET : /api/admin/codes/{category}` - private -
-* `DELETE : /api/admin/codes/{code}` - private -
+* `POST : /api/admin/codes` - private - create new codes (bulk) by category
+* `GET : /api/admin/codes` - private - get all the codes
+* `GET : /api/admin/codes/{category}` - private - get all the codes for category
+* `DELETE : /api/admin/codes/{code}` - private - delete a specific code
+* `POST : /api/admin/codes/{code}/reset` - private - reset a code to unused
+* `POST : /api/admin/codes/reset` - private - reset all codes to unused
 
 ### Meta: Voting categories
 The Voting Categories are used to manage the categories where the teams will be voted for. This is displayed on the UI.
@@ -64,7 +66,9 @@ To keep the costs at a minimum and because I am dealing with around 100 - 200 bu
   * _Teams_ - same as above but for teams
   * _Votes_ - a bit more complicated table, PK string with voting code, and a composite SK(SortKey)
     * `SortKey:    fmt.Sprintf("cat#%d#team#%d", v.CategoryID, v.TeamID),`
+    * `PK: voting code`
     * This way, it is very easy to retrieve values
+    * (add image)
 * `Lambda function` to host the API written in `golang`
   * The lambda should be sufficient for approximately 200 burst requests
   * I picked ARM runtime because it is the cheapest
@@ -114,6 +118,7 @@ The project, while could be a lot better, is simple
   * Waits for everything to be ready before finishing
 * Lastly, a `makefile` to help with automation
   * For example, the lambda uses an `ARM runtime`, the makefile has a target inside to create the required zip file
+  * Check the file for additional targets
 
 
 ## How to run this locally?

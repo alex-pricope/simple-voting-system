@@ -18,7 +18,8 @@ import (
 	"testing"
 )
 
-func setupTestController(t *testing.T) (*AdminController, *gin.Engine) {
+//nolint:staticcheck
+func setupTestAdminController(t *testing.T) (*AdminController, *gin.Engine) {
 	t.Helper()
 	logging.Log = logrus.New()
 
@@ -53,12 +54,13 @@ func setupTestController(t *testing.T) (*AdminController, *gin.Engine) {
 	r.GET("/api/admin/codes", controller.listCodes)
 	r.GET("/api/admin/codes/:category", controller.getCodesByCategory)
 	r.DELETE("/api/admin/codes/:code", controller.deleteCode)
+	r.POST("/api/admin/codes/:code/reset", controller.resetCode)
 
 	return controller, r
 }
 
 func TestGetCodesByCategory(t *testing.T) {
-	_, router := setupTestController(t)
+	_, router := setupTestAdminController(t)
 
 	t.Run("Happy path - create and get by category", func(t *testing.T) {
 		payload := models.CreateCodeRequest{
@@ -86,7 +88,7 @@ func TestGetCodesByCategory(t *testing.T) {
 			t.Fatalf("expected 200 from GET, got %d", getRes.Code)
 		}
 
-		var result []*storage.VotingCode
+		var result []*models.CodeResponse
 		if err := json.Unmarshal(getRes.Body.Bytes(), &result); err != nil {
 			t.Fatalf("failed to unmarshal response: %v", err)
 		}
@@ -104,7 +106,7 @@ func TestGetCodesByCategory(t *testing.T) {
 		if getRes.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", getRes.Code)
 		}
-		var result []*storage.VotingCode
+		var result []*models.CodeResponse
 		if err := json.Unmarshal(getRes.Body.Bytes(), &result); err != nil {
 			t.Fatalf("failed to unmarshal response: %v", err)
 		}
@@ -150,7 +152,7 @@ func cleanupTable(t *testing.T, client *dynamodb.Client, tableName string) {
 }
 
 func TestDeleteVotingCodes(t *testing.T) {
-	_, router := setupTestController(t)
+	_, router := setupTestAdminController(t)
 
 	// Create 5 codes
 	payload := models.CreateCodeRequest{
@@ -168,7 +170,7 @@ func TestDeleteVotingCodes(t *testing.T) {
 		t.Fatalf("expected 200 from POST, got %d", postRes.Code)
 	}
 
-	var created []*storage.VotingCode
+	var created []*models.CodeResponse
 	if err := json.Unmarshal(postRes.Body.Bytes(), &created); err != nil || len(created) != 5 {
 		t.Fatalf("Expected 5 codes created, got %d (err: %v)", len(created), err)
 	}
@@ -195,7 +197,7 @@ func TestDeleteVotingCodes(t *testing.T) {
 		t.Fatalf("expected 200 from GET, got %d", getRes.Code)
 	}
 
-	var remaining []*storage.VotingCode
+	var remaining []*models.CodeResponse
 	if err := json.Unmarshal(getRes.Body.Bytes(), &remaining); err != nil {
 		t.Fatalf("failed to parse GET response: %v", err)
 	}
@@ -215,10 +217,10 @@ func TestDeleteVotingCodes(t *testing.T) {
 }
 
 func TestListVotingCodes(t *testing.T) {
-	_, router := setupTestController(t)
+	_, router := setupTestAdminController(t)
 
 	categories := []string{"grand_jury", "other_team", "general_public"}
-	createdCodes := make(map[string]string) // code -> category
+	createdCodes := make(map[string]string)
 
 	// Arrange - create 5 codes across different categories
 	for i := 0; i < 5; i++ {
@@ -238,7 +240,7 @@ func TestListVotingCodes(t *testing.T) {
 			t.Fatalf("POST failed: expected 200, got %d", postRes.Code)
 		}
 
-		var created []*storage.VotingCode
+		var created []*models.CodeResponse
 		if err := json.Unmarshal(postRes.Body.Bytes(), &created); err != nil || len(created) == 0 {
 			t.Fatalf("Failed to parse created code response: %v", err)
 		}
@@ -255,14 +257,14 @@ func TestListVotingCodes(t *testing.T) {
 		t.Fatalf("GET failed: expected 200, got %d", getRes.Code)
 	}
 
-	var codes []*storage.VotingCode
+	var codes []*models.CodeResponse
 	if err := json.Unmarshal(getRes.Body.Bytes(), &codes); err != nil {
 		t.Fatalf("Failed to parse GET response: %v", err)
 	}
 
 	// Assert - verify all created codes are in the response
 	for code, category := range createdCodes {
-		var found *storage.VotingCode
+		var found *models.CodeResponse
 		for _, c := range codes {
 			if c.Code == code {
 				found = c
@@ -286,7 +288,7 @@ func TestListVotingCodes(t *testing.T) {
 }
 
 func TestCreateVotingCodes(t *testing.T) {
-	_, router := setupTestController(t)
+	_, router := setupTestAdminController(t)
 
 	t.Run("Create one code", func(t *testing.T) {
 		payload := models.CreateCodeRequest{
@@ -400,6 +402,76 @@ func TestGetCategories(t *testing.T) {
 	for _, category := range result {
 		if category["key"] == "" || category["label"] == "" {
 			t.Fatalf("expected key and label to be present, got: %+v", category)
+		}
+	}
+}
+
+//nolint:staticcheck
+func TestResetVotingCode(t *testing.T) {
+	_, router := setupTestAdminController(t)
+
+	// Create a code
+	payload := models.CreateCodeRequest{
+		Count:    1,
+		Category: "general_public",
+	}
+	body, _ := json.Marshal(payload)
+	postReq := httptest.NewRequest(http.MethodPost, "/api/admin/codes", bytes.NewBuffer(body))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("x-admin-token", "secret")
+	postRes := httptest.NewRecorder()
+	router.ServeHTTP(postRes, postReq)
+
+	if postRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from POST, got %d", postRes.Code)
+	}
+
+	var created []*models.CodeResponse
+	if err := json.Unmarshal(postRes.Body.Bytes(), &created); err != nil || len(created) == 0 {
+		t.Fatalf("failed to parse created code: %v", err)
+	}
+	code := created[0].Code
+
+	// Manually mark the code as used
+	created[0].Used = true
+	client := storage.DynamoVotingCodesStorage{
+		Client: dynamodb.NewFromConfig(aws.Config{Region: "us-east-1", EndpointResolverWithOptions: aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+			return aws.Endpoint{URL: "http://localhost:4566", HostnameImmutable: true}, nil
+		})}),
+		TableName: "VotingCodes",
+	}
+	err := client.MarkUsed(context.TODO(), created[0].Code)
+	if err != nil {
+		t.Fatalf("failed to manually update voting code as used: %v", err)
+	}
+
+	// Reset the code via the API
+	resetReq := httptest.NewRequest(http.MethodPost, "/api/admin/codes/"+code+"/reset", nil)
+	resetReq.Header.Set("x-admin-token", "secret")
+	resetRes := httptest.NewRecorder()
+	router.ServeHTTP(resetRes, resetReq)
+
+	if resetRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from reset, got %d", resetRes.Code)
+	}
+
+	// Fetch and verify the code is no longer used
+	getReq := httptest.NewRequest(http.MethodGet, "/api/admin/codes", nil)
+	getReq.Header.Set("x-admin-token", "secret")
+	getRes := httptest.NewRecorder()
+	router.ServeHTTP(getRes, getReq)
+
+	if getRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from GET, got %d", getRes.Code)
+	}
+
+	var codes []*models.CodeResponse
+	if err := json.Unmarshal(getRes.Body.Bytes(), &codes); err != nil {
+		t.Fatalf("failed to parse codes: %v", err)
+	}
+	for _, c := range codes {
+		if c.Code == code && c.Used {
+			t.Fatalf("expected code %s to be marked as unused", code)
 		}
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"testing"
 )
 
+//nolint:staticcheck
 func setupCategoryTestController(t *testing.T) (*CategoryMetaController, *gin.Engine) {
 	t.Helper()
 	logging.Log = logrus.New()

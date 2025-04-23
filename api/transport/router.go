@@ -50,7 +50,7 @@ func NoRouteHandler() gin.HandlerFunc {
 func AdminAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.GetHeader("x-admin-token")
-		expected := os.Getenv("ADMIN_TOKEN") // keep secret out of code
+		expected := os.Getenv("ADMIN_TOKEN")
 
 		if token == "" || token != expected {
 			logging.Log.Warnf("ADMIN: Unauthorized access attempt to %s", c.Request.URL.Path)

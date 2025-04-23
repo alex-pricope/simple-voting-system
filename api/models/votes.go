@@ -1,16 +1,23 @@
 package models
 
+// VoteEntry represents a single vote cast for a team in a category.
 type VoteEntry struct {
-	CategoryID int `json:"categoryId"`
-	TeamID     int `json:"teamId"`
-	Rating     int `json:"rating"`
+	CategoryID int `json:"categoryId" binding:"required"`
+	TeamID     int `json:"teamId" binding:"required"`
+	Rating     int `json:"rating" binding:"required,min=1,max=5"`
 }
 
+// RegisterVoteRequest is the payload for submitting a full vote set by a user.
 type RegisterVoteRequest struct {
-	Code  string      `json:"code"`
-	Votes []VoteEntry `json:"votes"`
+	Code  string      `json:"code" binding:"required"`
+	Votes []VoteEntry `json:"votes" binding:"required,dive"`
 }
 
 type RegisterVoteResponse struct {
 	Message string `json:"message"`
+}
+
+type VoteResponse struct {
+	Code  string      `json:"code"`
+	Votes []VoteEntry `json:"votes"`
 }
