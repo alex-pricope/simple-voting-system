@@ -131,6 +131,7 @@ func TestGetVotingCategoryByID(t *testing.T) {
 			ID:          300,
 			Name:        "Performance",
 			Description: "Measures how well the app performs",
+			Weight:      0.5,
 		}
 		createReq := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
 			"Content-Type":  "application/json",
@@ -151,6 +152,7 @@ func TestGetVotingCategoryByID(t *testing.T) {
 		require.Equal(t, 300, res.ID)
 		require.Equal(t, "Performance", res.Name)
 		require.Equal(t, "Measures how well the app performs", res.Description)
+		require.Equal(t, 0.5, res.Weight)
 	})
 
 	t.Run("Unhappy path - invalid ID format", func(t *testing.T) {
@@ -176,6 +178,7 @@ func TestCreateVotingCategory(t *testing.T) {
 			ID:          1,
 			Name:        "Creativity",
 			Description: "Creativity of the project",
+			Weight:      0.5,
 		}
 		req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
 			"Content-Type":  "application/json",
@@ -189,6 +192,7 @@ func TestCreateVotingCategory(t *testing.T) {
 		reqBody := models.VotingCategoryCreateRequest{
 			ID:          2,
 			Description: "Creativity of the project",
+			Weight:      0.5,
 		}
 		req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
 			"Content-Type":  "application/json",
@@ -205,6 +209,7 @@ func TestCreateVotingCategory(t *testing.T) {
 				ID:          i,
 				Name:        "Category " + strconv.Itoa(i),
 				Description: "Test category",
+				Weight:      0.5,
 			}
 			req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
 				"Content-Type":  "application/json",
@@ -219,6 +224,7 @@ func TestCreateVotingCategory(t *testing.T) {
 			ID:          3,
 			Name:        "Duplicate",
 			Description: "This should fail",
+			Weight:      0.5,
 		}
 		req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", duplicate, map[string]string{
 			"Content-Type":  "application/json",
@@ -250,6 +256,7 @@ func TestPutVotingCategory(t *testing.T) {
 		updateReq := models.VotingCategoryUpdateRequest{
 			Name:        "Updated Name",
 			Description: "Updated Description",
+			Weight:      0.4,
 		}
 		req = testutils.PerformRequest(router, http.MethodPut, "/api/meta/categories/100", updateReq, map[string]string{
 			"Content-Type":  "application/json",

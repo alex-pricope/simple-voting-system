@@ -13,6 +13,12 @@ const (
 	CategoryGeneralPublic VotingCategory = "general_public"
 )
 
+var CodeCategoryWeights = map[VotingCategory]float64{
+	CategoryGrandJury:     0.5,
+	CategoryOtherTeam:     0.3,
+	CategoryGeneralPublic: 0.2,
+}
+
 type CodeValidationResponse struct {
 	Valid     bool      `json:"valid"`
 	Category  string    `json:"category"`

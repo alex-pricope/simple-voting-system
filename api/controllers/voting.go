@@ -8,6 +8,7 @@ import (
 	"github.com/alex-pricope/simple-voting-system/storage"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -34,6 +35,7 @@ func (c *VotingController) RegisterRoutes(engine *gin.Engine) {
 	group.GET("/verify/:code", c.validateVotingCode)
 	group.POST("/vote", c.registerVote)
 	group.GET("/vote/:code", c.getVotesByCode)
+	group.GET("/vote/results", c.computeVoteResults)
 }
 
 // registerVote godoc
@@ -72,6 +74,7 @@ func (c *VotingController) registerVote(g *gin.Context) {
 			Rating:     v.Rating,
 			Timestamp:  time.Now().UTC(),
 		}
+		logging.Log.Infof("Writing vote PK: %s, SK: %s", vote.Code, vote.SortKey)
 		if err := c.votesStorage.Create(g.Request.Context(), vote); err != nil {
 			logging.Log.Errorf("failed to create vote: %v", err)
 			if strings.Contains(err.Error(), "ConditionalCheckFailedException") {
@@ -203,4 +206,162 @@ func (c *VotingController) getVotesByCode(g *gin.Context) {
 	}
 
 	g.JSON(http.StatusOK, response)
+}
+
+// computeVoteResults godoc
+// @Summary Compute voting results
+// @Description Aggregates votes per team and category, applying category and voter weights
+// @Tags voting
+// @Produce json
+// @Success 200 {object} models.VoteResultsResponse
+// @Failure 500 {object} models.ErrorResponse "Unexpected internal error"
+// @Router /api/vote/results [get]
+func (c *VotingController) computeVoteResults(g *gin.Context) {
+	ctx := g.Request.Context()
+
+	// Load all votes from the DB
+	allVotes, err := c.votesStorage.GetAll(ctx)
+	if err != nil {
+		logging.Log.Errorf("failed to retrieve all votes: %v", err)
+		g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not load votes"})
+		return
+	}
+
+	// Load all voting categories so we can map the IDs
+	votingCategories, err := c.categoriesStorage.GetAll(ctx)
+	if err != nil {
+		logging.Log.Errorf("failed to load categories: %v", err)
+		g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not load categories"})
+		return
+	}
+
+	// Load all teams so we can map the teamID to name
+	allTeams, err := c.teamsStorage.GetAll(ctx)
+	if err != nil {
+		logging.Log.Errorf("failed to load teams: %v", err)
+		g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not load teams"})
+		return
+	}
+
+	// Load all the unique codes
+	allUniqueCodes, err := c.codesStorage.GetAll(ctx)
+	if err != nil {
+		logging.Log.Errorf("failed to load voting codes (defined): %v", err)
+		g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not load voting codes"})
+		return
+	}
+
+	// Count how many codes have been used
+	usedCodesCount := 0
+	for _, code := range allUniqueCodes {
+		if code.Used {
+			usedCodesCount++
+		}
+	}
+
+	results := calculateVoteResults(allVotes, allUniqueCodes, votingCategories, allTeams)
+	g.JSON(http.StatusOK, models.VoteResultsResponse{
+		Results:    results,
+		TotalVotes: len(allVotes),
+		UsedCodes:  usedCodesCount})
+}
+
+func calculateVoteResults(
+	allVotes []*storage.Vote, allCodes []*storage.VotingCode,
+	categories []*storage.VotingCategory, teams []*storage.Team,
+) []models.VoteResult {
+	uniqueCodesWithCategoryMap := make(map[string]string)
+	for _, c := range allCodes {
+		uniqueCodesWithCategoryMap[c.Code] = c.Category
+	}
+
+	categoryMap := make(map[int]storage.VotingCategory)
+	for _, c := range categories {
+		categoryMap[c.ID] = *c
+	}
+
+	teamMap := make(map[int]storage.Team)
+	for _, t := range teams {
+		teamMap[t.ID] = *t
+	}
+
+	type entry struct {
+		sum   float64
+		count int
+	}
+	// scoreMap holds the aggregated and weighted scores for each team and category.
+	// Structure: map[teamID]map[categoryID]*entry where 'entry' contains the sum of weighted scores and the count of votes.
+	scoreMap := make(map[int]map[int]*entry)
+
+	// Parse the votes
+	for _, v := range allVotes {
+		codeCategory := uniqueCodesWithCategoryMap[v.Code]
+		votingCategory := categoryMap[v.CategoryID]
+		teamID := v.TeamID
+
+		// Create both weights
+		voterWeight, categoryWeight := models.CodeCategoryWeights[models.VotingCategory(codeCategory)], votingCategory.Weight
+
+		// The computed rating for each vote line
+		// (user_rating) × (importance of who votes) × (importance of what they're voting on)
+		weighted := float64(v.Rating) * voterWeight * categoryWeight
+
+		// Iterate and sum the individual weighted score
+		if _, ok := scoreMap[teamID]; !ok {
+			scoreMap[teamID] = make(map[int]*entry)
+		}
+		if _, ok := scoreMap[teamID][v.CategoryID]; !ok {
+			scoreMap[teamID][v.CategoryID] = &entry{}
+		}
+		scoreMap[teamID][v.CategoryID].sum += weighted
+		scoreMap[teamID][v.CategoryID].count++
+	}
+
+	// Note: Each voter is required (via frontend enforcement) to vote for every team in every category.
+	// This ensures that all codes contribute equally in terms of vote quantity, and only the category weight
+	// and the code's voter weight (e.g., grand_jury = 0.5) influence the outcome.
+	// This also means the average calculation per category is valid and fair.
+
+	var results []models.VoteResult
+
+	// Iterate through each category's aggregated score for the current team,
+	// compute the average total score, and build the result structure.
+	for teamID, catScores := range scoreMap {
+		var total float64
+		var categories []models.CategoryScore
+
+		for catID, entry := range catScores {
+			name := categoryMap[catID].Name
+
+			// Compute the average weighted score for this category and team.
+			// Since every voter votes for every team in each category, this average
+			// fairly represents their influence.
+			score := entry.sum / float64(entry.count)
+			categories = append(categories, models.CategoryScore{
+				CategoryID:   catID,
+				CategoryName: name,
+				Score:        score,
+			})
+			total += score
+		}
+
+		// Sort the categories by score
+		sort.Slice(categories, func(i, j int) bool {
+			return categories[i].Score > categories[j].Score
+		})
+
+		results = append(results, models.VoteResult{
+			TeamID:      teamID,
+			TeamName:    teamMap[teamID].Name,
+			TotalScore:  total,
+			Categories:  categories,
+			TeamMembers: teamMap[teamID].Members,
+		})
+	}
+
+	// Sort the teams by final total score
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].TotalScore > results[j].TotalScore
+	})
+	return results
 }

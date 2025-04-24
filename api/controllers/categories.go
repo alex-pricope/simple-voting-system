@@ -109,11 +109,13 @@ func (c *CategoryMetaController) create(g *gin.Context) {
 		g.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request empty name"})
 		return
 	}
-
+	//TODO: Weight is not checked
+	
 	category := &storage.VotingCategory{
 		ID:          req.ID,
 		Name:        req.Name,
 		Description: req.Description,
+		Weight:      req.Weight,
 	}
 
 	if err := c.storage.Create(g.Request.Context(), category); err != nil {
@@ -166,6 +168,7 @@ func (c *CategoryMetaController) update(g *gin.Context) {
 		ID:          id,
 		Name:        req.Name,
 		Description: req.Description,
+		Weight:      req.Weight,
 	}
 
 	if err := c.storage.Update(g.Request.Context(), category); err != nil {

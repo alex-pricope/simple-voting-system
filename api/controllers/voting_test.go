@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	testutils "github.com/alex-pricope/simple-voting-system/api/controllers/testing"
 	"github.com/alex-pricope/simple-voting-system/api/models"
 	"github.com/alex-pricope/simple-voting-system/logging"
@@ -14,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
 )
@@ -71,6 +73,7 @@ func setupTestVoteController(t *testing.T) (*VotingController, *gin.Engine) {
 	r.GET("/api/verify/:code", votingController.validateVotingCode)
 	r.POST("/api/vote/", votingController.registerVote)
 	r.GET("/api/vote/:code", votingController.getVotesByCode)
+	r.GET("/api/votes/result", votingController.computeVoteResults)
 	r.POST("/api/admin/codes", adminController.createCode)
 	r.POST("/api/meta/teams", teamsController.create)
 	r.POST("/api/meta/categories", categoriesController.create)
@@ -278,4 +281,337 @@ func TestGetVotesByCode(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestVoteResultsEndpoint(t *testing.T) {
+	_, router := setupTestVoteController(t)
+
+	// 1. Create codes
+	//categories := []string{"grand_jury", "other_team", "general_public"}
+	codeCount := map[string]int{"grand_jury": 3, "other_team": 3, "general_public": 4}
+	var codes []string
+
+	for category, count := range codeCount {
+		payload := models.CreateCodeRequest{Count: count, Category: category}
+		headers := map[string]string{"Content-Type": "application/json", "x-admin-token": "secret"}
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, headers)
+
+		var created []*models.CodeResponse
+		require.NoError(t, json.Unmarshal(res.Body.Bytes(), &created))
+		assert.Equal(t, count, len(created))
+
+		for _, c := range created {
+			codes = append(codes, c.Code)
+		}
+	}
+
+	// 2. Create categories
+	voteCategories := []models.VotingCategoryCreateRequest{
+		{ID: 1, Name: "Cat1", Description: "C1", Weight: 0.3},
+		{ID: 2, Name: "Cat2", Description: "C2", Weight: 0.25},
+		{ID: 3, Name: "Cat3", Description: "C3", Weight: 0.25},
+		{ID: 4, Name: "Cat4", Description: "C4", Weight: 0.2},
+	}
+	for _, cat := range voteCategories {
+		headers := map[string]string{"Content-Type": "application/json", "x-admin-token": "secret"}
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", cat, headers)
+		require.Equal(t, http.StatusOK, res.Code)
+	}
+
+	// 3. Create teams
+	for i := 1; i <= 5; i++ {
+		team := models.TeamCreateRequest{
+			ID: i, Name: fmt.Sprintf("Team %d", i), Members: []string{fmt.Sprintf("Member%d", i)}, Description: "Test",
+		}
+		headers := map[string]string{"Content-Type": "application/json", "x-admin-token": "secret"}
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", team, headers)
+		require.Equal(t, http.StatusOK, res.Code)
+	}
+
+	// 4. Use 9 of the codes and vote (ensure Team3 > Team2 > Team1 > Team4)
+	teamIDs := []int{1, 2, 3, 4, 5}
+	categoryRatings := [][]int{
+		{5, 4, 3, 2, 1}, // Vote 1
+		{4, 5, 3, 2, 1}, // Vote 2
+		{3, 2, 5, 1, 4}, // Vote 3
+		{2, 3, 4, 1, 5}, // Vote 4
+		{1, 2, 3, 5, 4}, // Vote 5
+		{1, 1, 5, 2, 3}, // Vote 6
+		{1, 1, 5, 4, 2}, // Vote 7
+		{3, 4, 2, 5, 1}, // Vote 8
+		{5, 1, 2, 3, 4}, // Vote 9
+	}
+
+	for i, code := range codes[:9] {
+		var entries []models.VoteEntry
+		for catID := 1; catID <= 4; catID++ {
+			for j, teamID := range teamIDs {
+				rating := categoryRatings[i][j]
+				entries = append(entries, models.VoteEntry{
+					CategoryID: catID,
+					TeamID:     teamID,
+					Rating:     rating,
+				})
+			}
+		}
+		vote := models.RegisterVoteRequest{Code: code, Votes: entries}
+		headers := map[string]string{"Content-Type": "application/json"}
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/vote/", vote, headers)
+		require.Equal(t, http.StatusOK, res.Code)
+	}
+
+	// 5. Retrieve results
+	res := testutils.PerformRequest(router, http.MethodGet, "/api/votes/result", nil, nil)
+	require.Equal(t, http.StatusOK, res.Code)
+
+	var result models.VoteResultsResponse
+	err := json.Unmarshal(res.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Len(t, result.Results, 5)
+
+	// 6. Assert team order
+	assert.Equal(t, "Team 3", result.Results[0].TeamName)
+	assert.Equal(t, "Team 1", result.Results[1].TeamName)
+	assert.Equal(t, "Team 2", result.Results[2].TeamName)
+	assert.Equal(t, "Team 5", result.Results[3].TeamName)
+	assert.Equal(t, "Team 4", result.Results[4].TeamName)
+
+	// 7. Assert each team has all 4 categories and category scores
+	for _, team := range result.Results {
+		assert.Len(t, team.Categories, 4)
+		for _, c := range team.Categories {
+			assert.Greater(t, c.Score, 0.0)
+			assert.Contains(t, []string{"Cat1", "Cat2", "Cat3", "Cat4"}, c.CategoryName)
+		}
+	}
+
+	// 8. Assert the number of codes used
+	usedCodes := make(map[string]bool)
+	for _, code := range codes[:9] {
+		usedCodes[code] = true
+	}
+	assert.Equal(t, 9, len(usedCodes), "Expected 9 used codes")
+}
+
+func TestSingleVotePerCategoryWeighting_GrandJury(t *testing.T) {
+	runSingleVoteCategoryWeightingTest(t, "grand_jury", 0.5)
+}
+
+func TestSingleVotePerCategoryWeighting_GeneralPublic(t *testing.T) {
+	runSingleVoteCategoryWeightingTest(t, "general_public", 0.2)
+}
+
+func TestSingleVotePerCategoryWeighting_OtherTeam(t *testing.T) {
+	runSingleVoteCategoryWeightingTest(t, "other_team", 0.3)
+}
+
+func TestTwoCategoryVoteWeighting_GrandJury(t *testing.T) {
+	runTwoCategoryVoteWeightingTest(t, "grand_jury", 0.5)
+}
+
+func TestTwoCategoryVoteWeighting_GeneralPublic(t *testing.T) {
+	runTwoCategoryVoteWeightingTest(t, "general_public", 0.2)
+}
+
+func TestTwoCategoryVoteWeighting_OtherTeam(t *testing.T) {
+	runTwoCategoryVoteWeightingTest(t, "other_team", 0.3)
+}
+
+func TestTwoCategoryTwoVotesWeighting_GrandJury(t *testing.T) {
+	runTwoVotesTwoCategoryWeightingTest(t, "grand_jury", 0.5)
+}
+
+func TestTwoCategoryTwoVotesWeighting_GeneralPublic(t *testing.T) {
+	runTwoVotesTwoCategoryWeightingTest(t, "general_public", 0.2)
+}
+
+func TestTwoCategoryTwoVotesWeighting_OtherTeam(t *testing.T) {
+	runTwoVotesTwoCategoryWeightingTest(t, "other_team", 0.3)
+}
+
+func runTwoVotesTwoCategoryWeightingTest(t *testing.T, categoryName string, voterWeight float64) {
+	_, router := setupTestVoteController(t)
+
+	// Create two categories
+	cat1 := models.VotingCategoryCreateRequest{ID: 1, Name: "Cat1", Description: "Category 1", Weight: 0.4}
+	cat2 := models.VotingCategoryCreateRequest{ID: 2, Name: "Cat2", Description: "Category 2", Weight: 0.6}
+	headers := map[string]string{"Content-Type": "application/json", "x-admin-token": "secret"}
+	require.Equal(t, http.StatusOK, testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", cat1, headers).Code)
+	require.Equal(t, http.StatusOK, testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", cat2, headers).Code)
+
+	// Create teams
+	for i := 1; i <= 5; i++ {
+		team := models.TeamCreateRequest{ID: i, Name: fmt.Sprintf("Team %d", i)}
+		testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", team, headers)
+	}
+
+	// Create 2 codes
+	codePayload := models.CreateCodeRequest{Count: 2, Category: categoryName}
+	res := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", codePayload, headers)
+	var codes []*models.CodeResponse
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &codes))
+	require.Equal(t, 2, len(codes))
+
+	twoVotes := [][]models.VoteEntry{
+		{
+			{CategoryID: 1, TeamID: 1, Rating: 5},
+			{CategoryID: 1, TeamID: 2, Rating: 4},
+			{CategoryID: 1, TeamID: 3, Rating: 3},
+			{CategoryID: 1, TeamID: 4, Rating: 2},
+			{CategoryID: 1, TeamID: 5, Rating: 1},
+			{CategoryID: 2, TeamID: 1, Rating: 1},
+			{CategoryID: 2, TeamID: 2, Rating: 2},
+			{CategoryID: 2, TeamID: 3, Rating: 3},
+			{CategoryID: 2, TeamID: 4, Rating: 4},
+			{CategoryID: 2, TeamID: 5, Rating: 5},
+		},
+		{
+			{CategoryID: 1, TeamID: 1, Rating: 1},
+			{CategoryID: 1, TeamID: 2, Rating: 2},
+			{CategoryID: 1, TeamID: 3, Rating: 3},
+			{CategoryID: 1, TeamID: 4, Rating: 4},
+			{CategoryID: 1, TeamID: 5, Rating: 5},
+			{CategoryID: 2, TeamID: 1, Rating: 5},
+			{CategoryID: 2, TeamID: 2, Rating: 4},
+			{CategoryID: 2, TeamID: 3, Rating: 3},
+			{CategoryID: 2, TeamID: 4, Rating: 2},
+			{CategoryID: 2, TeamID: 5, Rating: 1},
+		},
+	}
+
+	for i, vote := range twoVotes {
+		voteReq := models.RegisterVoteRequest{Code: codes[i].Code, Votes: vote}
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/vote/", voteReq, map[string]string{"Content-Type": "application/json"})
+		require.Equal(t, http.StatusOK, res.Code)
+	}
+
+	res = testutils.PerformRequest(router, http.MethodGet, "/api/votes/result", nil, nil)
+	require.Equal(t, http.StatusOK, res.Code)
+
+	var result models.VoteResultsResponse
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &result))
+
+	expected := map[int]float64{
+		1: ((5*0.4 + 1*0.6) + (1*0.4 + 5*0.6)) / 2 * voterWeight,
+		2: ((4*0.4 + 2*0.6) + (2*0.4 + 4*0.6)) / 2 * voterWeight,
+		3: ((3*0.4 + 3*0.6) + (3*0.4 + 3*0.6)) / 2 * voterWeight,
+		4: ((2*0.4 + 4*0.6) + (4*0.4 + 2*0.6)) / 2 * voterWeight,
+		5: ((1*0.4 + 5*0.6) + (5*0.4 + 1*0.6)) / 2 * voterWeight,
+	}
+
+	for _, r := range result.Results {
+		assert.InDelta(t, expected[r.TeamID], r.TotalScore, 0.0001, fmt.Sprintf("Expected total score for Team %d", r.TeamID))
+		assert.Len(t, r.Categories, 2)
+	}
+}
+
+func runSingleVoteCategoryWeightingTest(t *testing.T, categoryName string, voterWeight float64) {
+	_, router := setupTestVoteController(t)
+
+	category := models.VotingCategoryCreateRequest{
+		ID: 1, Name: "Cat1", Description: "Test category", Weight: 0.5,
+	}
+	headers := map[string]string{"Content-Type": "application/json", "x-admin-token": "secret"}
+	res := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", category, headers)
+	require.Equal(t, http.StatusOK, res.Code)
+
+	for i := 1; i <= 5; i++ {
+		team := models.TeamCreateRequest{ID: i, Name: fmt.Sprintf("Team %d", i)}
+		testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", team, headers)
+	}
+
+	codePayload := models.CreateCodeRequest{Count: 1, Category: categoryName}
+	res = testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", codePayload, headers)
+	var codes []*models.CodeResponse
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &codes))
+	code := codes[0].Code
+
+	votes := []models.VoteEntry{
+		{CategoryID: 1, TeamID: 1, Rating: 5},
+		{CategoryID: 1, TeamID: 2, Rating: 4},
+		{CategoryID: 1, TeamID: 3, Rating: 3},
+		{CategoryID: 1, TeamID: 4, Rating: 2},
+		{CategoryID: 1, TeamID: 5, Rating: 1},
+	}
+	voteReq := models.RegisterVoteRequest{Code: code, Votes: votes}
+	voteHeaders := map[string]string{"Content-Type": "application/json"}
+	res = testutils.PerformRequest(router, http.MethodPost, "/api/vote/", voteReq, voteHeaders)
+	require.Equal(t, http.StatusOK, res.Code)
+
+	res = testutils.PerformRequest(router, http.MethodGet, "/api/votes/result", nil, nil)
+	require.Equal(t, http.StatusOK, res.Code)
+
+	var result models.VoteResultsResponse
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &result))
+
+	expected := map[int]float64{
+		1: 5 * 0.5 * voterWeight,
+		2: 4 * 0.5 * voterWeight,
+		3: 3 * 0.5 * voterWeight,
+		4: 2 * 0.5 * voterWeight,
+		5: 1 * 0.5 * voterWeight,
+	}
+
+	for _, r := range result.Results {
+		assert.InDelta(t, expected[r.TeamID], r.TotalScore, 0.0001, fmt.Sprintf("Expected score for Team %d", r.TeamID))
+		assert.Len(t, r.Categories, 1)
+	}
+}
+
+func runTwoCategoryVoteWeightingTest(t *testing.T, categoryName string, voterWeight float64) {
+	_, router := setupTestVoteController(t)
+
+	// Create two categories
+	cat1 := models.VotingCategoryCreateRequest{ID: 1, Name: "Cat1", Description: "Category 1", Weight: 0.4}
+	cat2 := models.VotingCategoryCreateRequest{ID: 2, Name: "Cat2", Description: "Category 2", Weight: 0.6}
+	headers := map[string]string{"Content-Type": "application/json", "x-admin-token": "secret"}
+	require.Equal(t, http.StatusOK, testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", cat1, headers).Code)
+	require.Equal(t, http.StatusOK, testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", cat2, headers).Code)
+
+	// Create teams
+	for i := 1; i <= 5; i++ {
+		team := models.TeamCreateRequest{ID: i, Name: fmt.Sprintf("Team %d", i)}
+		testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", team, headers)
+	}
+
+	// Create code
+	codePayload := models.CreateCodeRequest{Count: 1, Category: categoryName}
+	res := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", codePayload, headers)
+	var codes []*models.CodeResponse
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &codes))
+	code := codes[0].Code
+
+	// Vote entries for two categories
+	votes := []models.VoteEntry{
+		{CategoryID: 1, TeamID: 1, Rating: 5}, {CategoryID: 1, TeamID: 2, Rating: 4},
+		{CategoryID: 1, TeamID: 3, Rating: 3}, {CategoryID: 1, TeamID: 4, Rating: 2},
+		{CategoryID: 1, TeamID: 5, Rating: 1},
+
+		{CategoryID: 2, TeamID: 1, Rating: 1}, {CategoryID: 2, TeamID: 2, Rating: 2},
+		{CategoryID: 2, TeamID: 3, Rating: 3}, {CategoryID: 2, TeamID: 4, Rating: 4},
+		{CategoryID: 2, TeamID: 5, Rating: 5},
+	}
+	voteReq := models.RegisterVoteRequest{Code: code, Votes: votes}
+	res = testutils.PerformRequest(router, http.MethodPost, "/api/vote/", voteReq, map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, res.Code)
+
+	// Get results
+	res = testutils.PerformRequest(router, http.MethodGet, "/api/votes/result", nil, nil)
+	require.Equal(t, http.StatusOK, res.Code)
+
+	var result models.VoteResultsResponse
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &result))
+
+	expected := map[int]float64{
+		1: (5*0.4 + 1*0.6) * voterWeight,
+		2: (4*0.4 + 2*0.6) * voterWeight,
+		3: (3*0.4 + 3*0.6) * voterWeight,
+		4: (2*0.4 + 4*0.6) * voterWeight,
+		5: (1*0.4 + 5*0.6) * voterWeight,
+	}
+
+	for _, r := range result.Results {
+		assert.InDelta(t, expected[r.TeamID], r.TotalScore, 0.0001, fmt.Sprintf("Expected total score for Team %d", r.TeamID))
+		assert.Len(t, r.Categories, 2)
+	}
 }

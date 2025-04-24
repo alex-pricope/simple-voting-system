@@ -10,9 +10,10 @@ type VotingCode struct {
 }
 
 type VotingCategory struct {
-	ID          int    `dynamodbav:"PK"`
-	Name        string `dynamodbav:"Name"`
-	Description string `dynamodbav:"Description"`
+	ID          int     `dynamodbav:"PK"`
+	Name        string  `dynamodbav:"Name"`
+	Description string  `dynamodbav:"Description"`
+	Weight      float64 `dynamodbav:"Weight"`
 }
 
 type Team struct {

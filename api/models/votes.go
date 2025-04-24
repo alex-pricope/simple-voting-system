@@ -32,3 +32,23 @@ type GetVoteEntry struct {
 	Team     string `json:"team" binding:"required"`
 	Category string `json:"category"`
 }
+
+type CategoryScore struct {
+	CategoryID   int     `json:"categoryId"`
+	CategoryName string  `json:"category"`
+	Score        float64 `json:"score"`
+}
+
+type VoteResult struct {
+	TeamID      int             `json:"teamId"`
+	TeamName    string          `json:"teamName"`
+	TotalScore  float64         `json:"totalScore"`
+	Categories  []CategoryScore `json:"categories"`
+	TeamMembers []string        `json:"teamMembers"`
+}
+
+type VoteResultsResponse struct {
+	TotalVotes int          `json:"totalVotes"`
+	Results    []VoteResult `json:"results"`
+	UsedCodes  int          `json:"usedCodes"`
+}
