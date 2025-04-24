@@ -21,3 +21,14 @@ type VoteResponse struct {
 	Code  string      `json:"code"`
 	Votes []VoteEntry `json:"votes"`
 }
+
+type GetVoteResponse struct {
+	Code  string         `json:"code"`
+	Votes []GetVoteEntry `json:"votes"`
+}
+
+type GetVoteEntry struct {
+	VoteEntry
+	Team     string `json:"team" binding:"required"`
+	Category string `json:"category"`
+}

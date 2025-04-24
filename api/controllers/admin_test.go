@@ -1,9 +1,9 @@
 package controllers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	testutils "github.com/alex-pricope/simple-voting-system/api/controllers/testing"
 	"github.com/alex-pricope/simple-voting-system/api/models"
 	"github.com/alex-pricope/simple-voting-system/logging"
 	"github.com/alex-pricope/simple-voting-system/storage"
@@ -13,8 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -32,9 +33,7 @@ func setupTestAdminController(t *testing.T) (*AdminController, *gin.Engine) {
 			}),
 		),
 	)
-	if err != nil {
-		t.Fatalf("failed to load AWS config: %v", err)
-	}
+	require.NoError(t, err, "failed to load AWS config")
 
 	db := dynamodb.NewFromConfig(cfg)
 	s := &storage.DynamoVotingCodesStorage{
@@ -67,63 +66,41 @@ func TestGetCodesByCategory(t *testing.T) {
 			Count:    2,
 			Category: "other_team",
 		}
-		body, _ := json.Marshal(payload)
 
-		postReq := httptest.NewRequest(http.MethodPost, "/api/admin/codes", bytes.NewBuffer(body))
-		postReq.Header.Set("Content-Type", "application/json")
-		postReq.Header.Set("x-admin-token", "secret")
-		postRes := httptest.NewRecorder()
-		router.ServeHTTP(postRes, postReq)
+		postRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if postRes.Code != http.StatusOK {
-			t.Fatalf("expected 200 from POST, got %d", postRes.Code)
-		}
+		require.Equal(t, http.StatusOK, postRes.Code)
 
-		getReq := httptest.NewRequest(http.MethodGet, "/api/admin/codes/other_team", nil)
-		getReq.Header.Set("x-admin-token", "secret")
-		getRes := httptest.NewRecorder()
-		router.ServeHTTP(getRes, getReq)
+		getRes := testutils.PerformRequest(router, http.MethodGet, "/api/admin/codes/other_team", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if getRes.Code != http.StatusOK {
-			t.Fatalf("expected 200 from GET, got %d", getRes.Code)
-		}
+		require.Equal(t, http.StatusOK, getRes.Code)
 
 		var result []*models.CodeResponse
-		if err := json.Unmarshal(getRes.Body.Bytes(), &result); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
-		if len(result) != 2 {
-			t.Fatalf("expected 2 codes, got %d", len(result))
-		}
+		require.NoError(t, json.Unmarshal(getRes.Body.Bytes(), &result))
+		require.Len(t, result, 2)
 	})
 
 	t.Run("Unhappy path - valid but unused category", func(t *testing.T) {
-		getReq := httptest.NewRequest(http.MethodGet, "/api/admin/codes/grand_jury", nil)
-		getReq.Header.Set("x-admin-token", "secret")
-		getRes := httptest.NewRecorder()
-		router.ServeHTTP(getRes, getReq)
+		getRes := testutils.PerformRequest(router, http.MethodGet, "/api/admin/codes/grand_jury", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if getRes.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d", getRes.Code)
-		}
+		require.Equal(t, http.StatusOK, getRes.Code)
 		var result []*models.CodeResponse
-		if err := json.Unmarshal(getRes.Body.Bytes(), &result); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
-		if len(result) != 0 {
-			t.Fatalf("expected 0 codes, got %d", len(result))
-		}
+		require.NoError(t, json.Unmarshal(getRes.Body.Bytes(), &result))
+		require.Len(t, result, 0)
 	})
 
 	t.Run("Unhappy path - invalid category", func(t *testing.T) {
-		getReq := httptest.NewRequest(http.MethodGet, "/api/admin/codes/invalid_category", nil)
-		getReq.Header.Set("x-admin-token", "secret")
-		getRes := httptest.NewRecorder()
-		router.ServeHTTP(getRes, getReq)
+		getRes := testutils.PerformRequest(router, http.MethodGet, "/api/admin/codes/invalid_category", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if getRes.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400, got %d", getRes.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, getRes.Code)
 	})
 }
 
@@ -133,9 +110,7 @@ func cleanupTable(t *testing.T, client *dynamodb.Client, tableName string) {
 	out, err := client.Scan(context.TODO(), &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
 	})
-	if err != nil {
-		t.Fatalf("cleanup failed to scan %s: %v", tableName, err)
-	}
+	require.NoError(t, err, "cleanup failed to scan %s", tableName)
 
 	for _, item := range out.Items {
 		key := map[string]types.AttributeValue{
@@ -145,9 +120,7 @@ func cleanupTable(t *testing.T, client *dynamodb.Client, tableName string) {
 			TableName: aws.String(tableName),
 			Key:       key,
 		})
-		if err != nil {
-			t.Fatalf("cleanup failed to delete item: %v", err)
-		}
+		require.NoError(t, err, "cleanup failed to delete item")
 	}
 }
 
@@ -159,61 +132,45 @@ func TestDeleteVotingCodes(t *testing.T) {
 		Count:    5,
 		Category: "general_public",
 	}
-	body, _ := json.Marshal(payload)
-	postReq := httptest.NewRequest(http.MethodPost, "/api/admin/codes", bytes.NewBuffer(body))
-	postReq.Header.Set("Content-Type", "application/json")
-	postReq.Header.Set("x-admin-token", "secret")
-	postRes := httptest.NewRecorder()
-	router.ServeHTTP(postRes, postReq)
 
-	if postRes.Code != http.StatusOK {
-		t.Fatalf("expected 200 from POST, got %d", postRes.Code)
-	}
+	postRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, map[string]string{
+		"x-admin-token": "secret",
+	})
+
+	require.Equal(t, http.StatusOK, postRes.Code)
 
 	var created []*models.CodeResponse
-	if err := json.Unmarshal(postRes.Body.Bytes(), &created); err != nil || len(created) != 5 {
-		t.Fatalf("Expected 5 codes created, got %d (err: %v)", len(created), err)
-	}
+	err := json.Unmarshal(postRes.Body.Bytes(), &created)
+	require.NoError(t, err)
+	require.Len(t, created, 5)
 
 	// Delete each code
 	for _, code := range created {
-		delReq := httptest.NewRequest(http.MethodDelete, "/api/admin/codes/"+code.Code, nil)
-		delReq.Header.Set("x-admin-token", "secret")
-		delRes := httptest.NewRecorder()
-		router.ServeHTTP(delRes, delReq)
+		delRes := testutils.PerformRequest(router, http.MethodDelete, "/api/admin/codes/"+code.Code, nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if delRes.Code != http.StatusOK {
-			t.Errorf("Failed to delete code %s: expected 200, got %d", code.Code, delRes.Code)
-		}
+		assert.Equal(t, http.StatusOK, delRes.Code, "Failed to delete code %s", code.Code)
 	}
 
 	// Verify all deleted
-	getReq := httptest.NewRequest(http.MethodGet, "/api/admin/codes", nil)
-	getReq.Header.Set("x-admin-token", "secret")
-	getRes := httptest.NewRecorder()
-	router.ServeHTTP(getRes, getReq)
+	getRes := testutils.PerformRequest(router, http.MethodGet, "/api/admin/codes", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
 
-	if getRes.Code != http.StatusOK {
-		t.Fatalf("expected 200 from GET, got %d", getRes.Code)
-	}
+	require.Equal(t, http.StatusOK, getRes.Code)
 
 	var remaining []*models.CodeResponse
-	if err := json.Unmarshal(getRes.Body.Bytes(), &remaining); err != nil {
-		t.Fatalf("failed to parse GET response: %v", err)
-	}
-	if len(remaining) != 0 {
-		t.Fatalf("expected no codes remaining, got %d", len(remaining))
-	}
+	err = json.Unmarshal(getRes.Body.Bytes(), &remaining)
+	require.NoError(t, err)
+	require.Len(t, remaining, 0)
 
 	// Attempt delete non-existing code
-	nonExistReq := httptest.NewRequest(http.MethodDelete, "/api/admin/codes/DOESNOTEXIST", nil)
-	nonExistReq.Header.Set("x-admin-token", "secret")
-	nonExistRes := httptest.NewRecorder()
-	router.ServeHTTP(nonExistRes, nonExistReq)
+	nonExistRes := testutils.PerformRequest(router, http.MethodDelete, "/api/admin/codes/DOESNOTEXIST", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
 
-	if nonExistRes.Code != http.StatusOK {
-		t.Errorf("expected 200 when deleting non-existent code (idempotent), got %d", nonExistRes.Code)
-	}
+	assert.Equal(t, http.StatusOK, nonExistRes.Code, "expected 200 when deleting non-existent code (idempotent)")
 }
 
 func TestListVotingCodes(t *testing.T) {
@@ -229,38 +186,29 @@ func TestListVotingCodes(t *testing.T) {
 			Count:    1,
 			Category: category,
 		}
-		body, _ := json.Marshal(payload)
-		postReq := httptest.NewRequest(http.MethodPost, "/api/admin/codes", bytes.NewBuffer(body))
-		postReq.Header.Set("Content-Type", "application/json")
-		postReq.Header.Set("x-admin-token", "secret")
-		postRes := httptest.NewRecorder()
-		router.ServeHTTP(postRes, postReq)
+		postRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if postRes.Code != http.StatusOK {
-			t.Fatalf("POST failed: expected 200, got %d", postRes.Code)
-		}
+		require.Equal(t, http.StatusOK, postRes.Code)
 
 		var created []*models.CodeResponse
-		if err := json.Unmarshal(postRes.Body.Bytes(), &created); err != nil || len(created) == 0 {
-			t.Fatalf("Failed to parse created code response: %v", err)
-		}
+		err := json.Unmarshal(postRes.Body.Bytes(), &created)
+		require.NoError(t, err)
+		require.NotEmpty(t, created)
 		createdCodes[created[0].Code] = created[0].Category
 	}
 
 	// Act - retrieve codes
-	getReq := httptest.NewRequest(http.MethodGet, "/api/admin/codes", nil)
-	getReq.Header.Set("x-admin-token", "secret")
-	getRes := httptest.NewRecorder()
-	router.ServeHTTP(getRes, getReq)
+	getRes := testutils.PerformRequest(router, http.MethodGet, "/api/admin/codes", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
 
-	if getRes.Code != http.StatusOK {
-		t.Fatalf("GET failed: expected 200, got %d", getRes.Code)
-	}
+	require.Equal(t, http.StatusOK, getRes.Code)
 
 	var codes []*models.CodeResponse
-	if err := json.Unmarshal(getRes.Body.Bytes(), &codes); err != nil {
-		t.Fatalf("Failed to parse GET response: %v", err)
-	}
+	err := json.Unmarshal(getRes.Body.Bytes(), &codes)
+	require.NoError(t, err)
 
 	// Assert - verify all created codes are in the response
 	for code, category := range createdCodes {
@@ -271,18 +219,10 @@ func TestListVotingCodes(t *testing.T) {
 				break
 			}
 		}
-		if found == nil {
-			t.Errorf("Expected code %s not found in GET response", code)
-		} else {
-			if found.Category != category {
-				t.Errorf("Expected category %s, got %s for code %s", category, found.Category, code)
-			}
-			if found.Used != false {
-				t.Errorf("Expected Used=false for code %s, got %v", code, found.Used)
-			}
-			if found.CreatedAt.IsZero() {
-				t.Errorf("Expected non-zero CreatedAt for code %s", code)
-			}
+		if assert.NotNil(t, found, "Expected code %s not found in GET response", code) {
+			assert.Equal(t, category, found.Category, "Expected category %s, got %s for code %s", category, found.Category, code)
+			assert.False(t, found.Used, "Expected Used=false for code %s", code)
+			assert.False(t, found.CreatedAt.IsZero(), "Expected non-zero CreatedAt for code %s", code)
 		}
 	}
 }
@@ -295,21 +235,13 @@ func TestCreateVotingCodes(t *testing.T) {
 			Count:    1,
 			Category: "general_public",
 		}
-		body, _ := json.Marshal(payload)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/admin/codes", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
+		w := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-		if len(w.Body.Bytes()) == 0 {
-			t.Fatalf("expected response body to contain codes")
-		}
+		require.Equal(t, http.StatusOK, w.Code)
+		require.NotEmpty(t, w.Body.Bytes())
 	})
 
 	t.Run("Create multiple codes", func(t *testing.T) {
@@ -317,21 +249,13 @@ func TestCreateVotingCodes(t *testing.T) {
 			Count:    3,
 			Category: "other_team",
 		}
-		body, _ := json.Marshal(payload)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/admin/codes", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
+		w := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-		if len(w.Body.Bytes()) == 0 {
-			t.Fatalf("expected response body to contain codes")
-		}
+		require.Equal(t, http.StatusOK, w.Code)
+		require.NotEmpty(t, w.Body.Bytes())
 	})
 
 	t.Run("Create with invalid category", func(t *testing.T) {
@@ -339,18 +263,12 @@ func TestCreateVotingCodes(t *testing.T) {
 			Count:    1,
 			Category: "invalid_category",
 		}
-		body, _ := json.Marshal(payload)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/admin/codes", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
+		w := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
 	t.Run("Create with missing or zero count", func(t *testing.T) {
@@ -358,18 +276,12 @@ func TestCreateVotingCodes(t *testing.T) {
 			Count:    0,
 			Category: "general_public",
 		}
-		body, _ := json.Marshal(payload)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/admin/codes", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
+		w := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
 }
@@ -381,28 +293,20 @@ func TestGetCategories(t *testing.T) {
 	r := gin.New()
 	r.GET("/api/admin/categories", controller.listCategories)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/categories", nil)
-	req.Header.Set("x-admin-token", "secret")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	w := testutils.PerformRequest(r, http.MethodGet, "/api/admin/categories", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got %d", w.Code)
-	}
+	require.Equal(t, http.StatusOK, w.Code)
 
 	var result []map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 
-	if len(result) != len(models.ValidCategories) {
-		t.Fatalf("expected %d categories, got %d", len(models.ValidCategories), len(result))
-	}
+	require.Len(t, result, len(models.ValidCategories))
 
 	for _, category := range result {
-		if category["key"] == "" || category["label"] == "" {
-			t.Fatalf("expected key and label to be present, got: %+v", category)
-		}
+		require.NotEmpty(t, category["key"])
+		require.NotEmpty(t, category["label"])
 	}
 }
 
@@ -415,21 +319,17 @@ func TestResetVotingCode(t *testing.T) {
 		Count:    1,
 		Category: "general_public",
 	}
-	body, _ := json.Marshal(payload)
-	postReq := httptest.NewRequest(http.MethodPost, "/api/admin/codes", bytes.NewBuffer(body))
-	postReq.Header.Set("Content-Type", "application/json")
-	postReq.Header.Set("x-admin-token", "secret")
-	postRes := httptest.NewRecorder()
-	router.ServeHTTP(postRes, postReq)
 
-	if postRes.Code != http.StatusOK {
-		t.Fatalf("expected 200 from POST, got %d", postRes.Code)
-	}
+	postRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, map[string]string{
+		"x-admin-token": "secret",
+	})
+
+	require.Equal(t, http.StatusOK, postRes.Code)
 
 	var created []*models.CodeResponse
-	if err := json.Unmarshal(postRes.Body.Bytes(), &created); err != nil || len(created) == 0 {
-		t.Fatalf("failed to parse created code: %v", err)
-	}
+	err := json.Unmarshal(postRes.Body.Bytes(), &created)
+	require.NoError(t, err)
+	require.NotEmpty(t, created)
 	code := created[0].Code
 
 	// Manually mark the code as used
@@ -440,38 +340,29 @@ func TestResetVotingCode(t *testing.T) {
 		})}),
 		TableName: "VotingCodes",
 	}
-	err := client.MarkUsed(context.TODO(), created[0].Code)
-	if err != nil {
-		t.Fatalf("failed to manually update voting code as used: %v", err)
-	}
+	err = client.MarkUsed(context.TODO(), created[0].Code)
+	require.NoError(t, err)
 
 	// Reset the code via the API
-	resetReq := httptest.NewRequest(http.MethodPost, "/api/admin/codes/"+code+"/reset", nil)
-	resetReq.Header.Set("x-admin-token", "secret")
-	resetRes := httptest.NewRecorder()
-	router.ServeHTTP(resetRes, resetReq)
+	resetRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes/"+code+"/reset", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
 
-	if resetRes.Code != http.StatusOK {
-		t.Fatalf("expected 200 from reset, got %d", resetRes.Code)
-	}
+	require.Equal(t, http.StatusOK, resetRes.Code)
 
 	// Fetch and verify the code is no longer used
-	getReq := httptest.NewRequest(http.MethodGet, "/api/admin/codes", nil)
-	getReq.Header.Set("x-admin-token", "secret")
-	getRes := httptest.NewRecorder()
-	router.ServeHTTP(getRes, getReq)
+	getRes := testutils.PerformRequest(router, http.MethodGet, "/api/admin/codes", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
 
-	if getRes.Code != http.StatusOK {
-		t.Fatalf("expected 200 from GET, got %d", getRes.Code)
-	}
+	require.Equal(t, http.StatusOK, getRes.Code)
 
 	var codes []*models.CodeResponse
-	if err := json.Unmarshal(getRes.Body.Bytes(), &codes); err != nil {
-		t.Fatalf("failed to parse codes: %v", err)
-	}
+	err = json.Unmarshal(getRes.Body.Bytes(), &codes)
+	require.NoError(t, err)
 	for _, c := range codes {
-		if c.Code == code && c.Used {
-			t.Fatalf("expected code %s to be marked as unused", code)
+		if c.Code == code {
+			assert.False(t, c.Used, "expected code %s to be marked as unused", code)
 		}
 	}
 }

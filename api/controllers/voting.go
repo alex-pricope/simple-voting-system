@@ -13,14 +13,18 @@ import (
 )
 
 type VotingController struct {
-	codesStorage storage.VotingCodeStorage
-	votesStorage storage.VoteStorage
+	codesStorage      storage.VotingCodeStorage
+	votesStorage      storage.VoteStorage
+	teamsStorage      storage.TeamStorage
+	categoriesStorage storage.VotingCategoryStorage
 }
 
-func NewVotingController(codeStorage storage.VotingCodeStorage, voteStorage storage.VoteStorage) *VotingController {
+func NewVotingController(codeStorage storage.VotingCodeStorage, voteStorage storage.VoteStorage, teamStorage storage.TeamStorage, categoriesStorage storage.VotingCategoryStorage) *VotingController {
 	return &VotingController{
-		codesStorage: codeStorage,
-		votesStorage: voteStorage,
+		codesStorage:      codeStorage,
+		votesStorage:      voteStorage,
+		teamsStorage:      teamStorage,
+		categoriesStorage: categoriesStorage,
 	}
 }
 
@@ -29,6 +33,7 @@ func (c *VotingController) RegisterRoutes(engine *gin.Engine) {
 
 	group.GET("/verify/:code", c.validateVotingCode)
 	group.POST("/vote", c.registerVote)
+	group.GET("/vote/:code", c.getVotesByCode)
 }
 
 // registerVote godoc
@@ -125,4 +130,77 @@ func (c *VotingController) validateVotingCode(g *gin.Context) {
 	// Transform and return
 	r := models.TransformVotingCodeToValidationResponse(votingCode)
 	g.JSON(http.StatusOK, r)
+}
+
+// getVotesByCode godoc
+// @Summary Get votes by code
+// @Description Retrieves all votes for a specific code with team and category info
+// @Tags voting
+// @Produce json
+// @Param code path string true "Voting Code"
+// @Success 200 {object} models.GetVoteResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /api/vote/{code} [get]
+func (c *VotingController) getVotesByCode(g *gin.Context) {
+	code := g.Param("code")
+	if code == "" {
+		g.JSON(http.StatusBadRequest, &models.ErrorResponse{Error: "code is required"})
+		return
+	}
+
+	votes, err := c.votesStorage.GetByCode(g.Request.Context(), code)
+	if err != nil {
+		logging.Log.Errorf("failed to retrieve votes for code %s: %v", code, err)
+		g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not retrieve votes"})
+		return
+	}
+	if len(votes) == 0 {
+		g.JSON(http.StatusNotFound, &models.ErrorResponse{Error: "no votes found for the given code"})
+		return
+	}
+
+	categories, err := c.categoriesStorage.GetAll(g.Request.Context())
+	if err != nil {
+		logging.Log.Errorf("failed to load categories: %v", err)
+		g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not load categories"})
+		return
+	}
+
+	teams, err := c.teamsStorage.GetAll(g.Request.Context())
+	if err != nil {
+		logging.Log.Errorf("failed to load teams: %v", err)
+		g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not load teams"})
+		return
+	}
+
+	categoryMap := make(map[int]string)
+	for _, c := range categories {
+		categoryMap[c.ID] = c.Name
+	}
+
+	teamMap := make(map[int]string)
+	for _, t := range teams {
+		teamMap[t.ID] = t.Name
+	}
+
+	response := models.GetVoteResponse{
+		Code:  code,
+		Votes: make([]models.GetVoteEntry, 0, len(votes)),
+	}
+
+	for _, v := range votes {
+		response.Votes = append(response.Votes, models.GetVoteEntry{
+			VoteEntry: models.VoteEntry{
+				CategoryID: v.CategoryID,
+				TeamID:     v.TeamID,
+				Rating:     v.Rating,
+			},
+			Team:     teamMap[v.TeamID],
+			Category: categoryMap[v.CategoryID],
+		})
+	}
+
+	g.JSON(http.StatusOK, response)
 }

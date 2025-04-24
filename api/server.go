@@ -56,7 +56,7 @@ func (s *Server) Start() {
 	}
 
 	//Register controllers
-	votingController := controllers.NewVotingController(codeStorage, votesStorage)
+	votingController := controllers.NewVotingController(codeStorage, votesStorage, teamStorage, categoryStorage)
 	votingController.RegisterRoutes(r)
 	adminController := controllers.NewAdminController(codeStorage)
 	adminController.RegisterRoutes(r)

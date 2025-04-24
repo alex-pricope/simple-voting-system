@@ -6,11 +6,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
 type VoteStorage interface {
 	GetAll(ctx context.Context) ([]*Vote, error)
 	Create(ctx context.Context, vote *Vote) error
+	GetByCode(ctx context.Context, code string) ([]*Vote, error)
 }
 
 type DynamoVoteStorage struct {
@@ -51,4 +53,27 @@ func (s *DynamoVoteStorage) Create(ctx context.Context, vote *Vote) error {
 		return err
 	}
 	return nil
+}
+
+func (s *DynamoVoteStorage) GetByCode(ctx context.Context, code string) ([]*Vote, error) {
+	input := &dynamodb.QueryInput{
+		TableName:              &s.TableName,
+		KeyConditionExpression: aws.String("PK = :code"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":code": &types.AttributeValueMemberS{Value: code},
+		},
+	}
+
+	output, err := s.Client.Query(ctx, input)
+	if err != nil {
+		logging.Log.Errorf("VOTE: failed to query votes by code: %v", err)
+		return nil, err
+	}
+
+	var votes []*Vote
+	if err := attributevalue.UnmarshalListOfMaps(output.Items, &votes); err != nil {
+		logging.Log.Errorf("VOTE: failed to unmarshal votes for code %s: %v", code, err)
+		return nil, err
+	}
+	return votes, nil
 }

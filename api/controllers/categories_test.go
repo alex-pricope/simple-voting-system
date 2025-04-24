@@ -1,9 +1,9 @@
 package controllers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	testutils "github.com/alex-pricope/simple-voting-system/api/controllers/testing"
 	"github.com/alex-pricope/simple-voting-system/api/models"
 	"github.com/alex-pricope/simple-voting-system/logging"
 	"github.com/alex-pricope/simple-voting-system/storage"
@@ -17,6 +17,9 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 //nolint:staticcheck
@@ -32,9 +35,8 @@ func setupCategoryTestController(t *testing.T) (*CategoryMetaController, *gin.En
 			}),
 		),
 	)
-	if err != nil {
-		t.Fatalf("failed to load config: %v", err)
-	}
+	require.NoError(t, err, "failed to load config")
+
 	client := dynamodb.NewFromConfig(cfg)
 	t.Cleanup(func() {
 		cleanupCategoryTable(t, client, "VotingCategories")
@@ -63,9 +65,7 @@ func cleanupCategoryTable(t *testing.T, client *dynamodb.Client, tableName strin
 	out, err := client.Scan(context.TODO(), &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
 	})
-	if err != nil {
-		t.Fatalf("cleanup failed to scan %s: %v", tableName, err)
-	}
+	require.NoError(t, err, "cleanup failed to scan %s", tableName)
 
 	for _, item := range out.Items {
 		key := map[string]types.AttributeValue{
@@ -75,9 +75,7 @@ func cleanupCategoryTable(t *testing.T, client *dynamodb.Client, tableName strin
 			TableName: aws.String(tableName),
 			Key:       key,
 		})
-		if err != nil {
-			t.Fatalf("cleanup failed to delete item: %v", err)
-		}
+		require.NoError(t, err, "cleanup failed to delete item")
 	}
 }
 
@@ -91,56 +89,37 @@ func TestDeleteVotingCategory(t *testing.T) {
 			Name:        "ToDelete",
 			Description: "To be removed",
 		}
-		body, _ := json.Marshal(reqBody)
-
-		createReq := httptest.NewRequest(http.MethodPost, "/api/meta/categories", bytes.NewBuffer(body))
-		createReq.Header.Set("Content-Type", "application/json")
-		createReq.Header.Set("x-admin-token", "secret")
-		createRes := httptest.NewRecorder()
-		router.ServeHTTP(createRes, createReq)
-		if createRes.Code != http.StatusOK {
-			t.Fatalf("failed to create category: %d", createRes.Code)
-		}
+		createReq := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, createReq.Code, "failed to create category")
 
 		// Delete it
-		delReq := httptest.NewRequest(http.MethodDelete, "/api/meta/categories/500", nil)
-		delReq.Header.Set("x-admin-token", "secret")
-		delRes := httptest.NewRecorder()
-		router.ServeHTTP(delRes, delReq)
-		if delRes.Code != http.StatusOK {
-			t.Fatalf("failed to delete category: %d", delRes.Code)
-		}
+		delReq := testutils.PerformRequest(router, http.MethodDelete, "/api/meta/categories/500", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, delReq.Code, "failed to delete category")
 
 		// Get should now 404
-		getReq := httptest.NewRequest(http.MethodGet, "/api/meta/categories/500", nil)
-		getReq.Header.Set("x-admin-token", "secret")
-		getRes := httptest.NewRecorder()
-		router.ServeHTTP(getRes, getReq)
-		if getRes.Code != http.StatusNotFound {
-			t.Fatalf("expected 404 after delete, got %d", getRes.Code)
-		}
+		getRes := testutils.PerformRequest(router, http.MethodGet, "/api/meta/categories/500", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusNotFound, getRes.Code, "expected 404 after delete")
 	})
 
 	t.Run("Unhappy path - delete non-existing ID", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/meta/categories/9999", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 for idempotent delete, got %d", w.Code)
-		}
+		w := testutils.PerformRequest(router, http.MethodDelete, "/api/meta/categories/9999", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, w.Code, "expected 200 for idempotent delete")
 	})
 
 	t.Run("Unhappy path - invalid ID format", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/meta/categories/notanumber", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 for invalid ID, got %d", w.Code)
-		}
+		w := testutils.PerformRequest(router, http.MethodDelete, "/api/meta/categories/notanumber", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusBadRequest, w.Code, "expected 400 for invalid ID")
 	})
 }
 
@@ -153,56 +132,39 @@ func TestGetVotingCategoryByID(t *testing.T) {
 			Name:        "Performance",
 			Description: "Measures how well the app performs",
 		}
-		body, _ := json.Marshal(reqBody)
+		createReq := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
 
-		createReq := httptest.NewRequest(http.MethodPost, "/api/meta/categories", bytes.NewBuffer(body))
-		createReq.Header.Set("Content-Type", "application/json")
-		createReq.Header.Set("x-admin-token", "secret")
-		createRes := httptest.NewRecorder()
-		router.ServeHTTP(createRes, createReq)
+		require.Equal(t, http.StatusOK, createReq.Code, "failed to create category")
 
-		if createRes.Code != http.StatusOK {
-			t.Fatalf("failed to create category: %d", createRes.Code)
-		}
+		getRes := testutils.PerformRequest(router, http.MethodGet, "/api/meta/categories/300", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		getReq := httptest.NewRequest(http.MethodGet, "/api/meta/categories/300", nil)
-		getReq.Header.Set("x-admin-token", "secret")
-		getRes := httptest.NewRecorder()
-		router.ServeHTTP(getRes, getReq)
-
-		if getRes.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK, got %d", getRes.Code)
-		}
+		require.Equal(t, http.StatusOK, getRes.Code, "expected 200 OK")
 
 		var res models.VotingCategoryResponse
-		if err := json.Unmarshal(getRes.Body.Bytes(), &res); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
-		if res.ID != 300 || res.Name != "Performance" || res.Description != "Measures how well the app performs" {
-			t.Fatalf("unexpected category data: %+v", res)
-		}
+		err := json.Unmarshal(getRes.Body.Bytes(), &res)
+		require.NoError(t, err, "failed to unmarshal response")
+		require.Equal(t, 300, res.ID)
+		require.Equal(t, "Performance", res.Name)
+		require.Equal(t, "Measures how well the app performs", res.Description)
 	})
 
 	t.Run("Unhappy path - invalid ID format", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/meta/categories/notanumber", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 for invalid ID, got %d", w.Code)
-		}
+		w := testutils.PerformRequest(router, http.MethodGet, "/api/meta/categories/notanumber", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusBadRequest, w.Code, "expected 400 for invalid ID")
 	})
 
 	t.Run("Unhappy path - non-existing ID", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/meta/categories/999", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusNotFound {
-			t.Fatalf("expected 404 for invalid ID, got %d", w.Code)
-		}
+		w := testutils.PerformRequest(router, http.MethodGet, "/api/meta/categories/999", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusNotFound, w.Code, "expected 404 for invalid ID")
 	})
 }
 
@@ -215,18 +177,12 @@ func TestCreateVotingCategory(t *testing.T) {
 			Name:        "Creativity",
 			Description: "Creativity of the project",
 		}
-		body, _ := json.Marshal(reqBody)
+		req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
 
-		req := httptest.NewRequest(http.MethodPost, "/api/meta/categories", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
-		}
+		require.Equal(t, http.StatusOK, req.Code, "expected 200 OK")
 	})
 
 	t.Run("Unhappy path - missing name", func(t *testing.T) {
@@ -234,18 +190,12 @@ func TestCreateVotingCategory(t *testing.T) {
 			ID:          2,
 			Description: "Creativity of the project",
 		}
-		body, _ := json.Marshal(reqBody)
+		req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
 
-		req := httptest.NewRequest(http.MethodPost, "/api/meta/categories", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 Bad Request, got %d: %s", w.Code, w.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, req.Code, "expected 400 Bad Request")
 	})
 
 	t.Run("Unhappy path - duplicate ID", func(t *testing.T) {
@@ -256,17 +206,12 @@ func TestCreateVotingCategory(t *testing.T) {
 				Name:        "Category " + strconv.Itoa(i),
 				Description: "Test category",
 			}
-			body, _ := json.Marshal(reqBody)
+			req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
+				"Content-Type":  "application/json",
+				"x-admin-token": "secret",
+			})
 
-			req := httptest.NewRequest(http.MethodPost, "/api/meta/categories", bytes.NewBuffer(body))
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("x-admin-token", "secret")
-			w := httptest.NewRecorder()
-			router.ServeHTTP(w, req)
-
-			if w.Code != http.StatusOK {
-				t.Fatalf("setup POST failed for ID %d: got %d", i, w.Code)
-			}
+			require.Equal(t, http.StatusOK, req.Code, "setup POST failed for ID %d", i)
 		}
 
 		// Attempt to create a third category with a duplicate ID
@@ -275,17 +220,12 @@ func TestCreateVotingCategory(t *testing.T) {
 			Name:        "Duplicate",
 			Description: "This should fail",
 		}
-		body, _ := json.Marshal(duplicate)
+		req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", duplicate, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
 
-		req := httptest.NewRequest(http.MethodPost, "/api/meta/categories", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusConflict {
-			t.Fatalf("expected 409 Conflict for duplicate ID, got %d: %s", w.Code, w.Body.String())
-		}
+		require.Equal(t, http.StatusConflict, req.Code, "expected 409 Conflict for duplicate ID")
 	})
 
 }
@@ -300,48 +240,34 @@ func TestPutVotingCategory(t *testing.T) {
 			Name:        "Original Name",
 			Description: "Original Description",
 		}
-		createBody, _ := json.Marshal(createReq)
-
-		req := httptest.NewRequest(http.MethodPost, "/api/meta/categories", bytes.NewBuffer(createBody))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("failed to create category: %d", w.Code)
-		}
+		req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", createReq, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, req.Code, "failed to create category")
 
 		// Update category
 		updateReq := models.VotingCategoryUpdateRequest{
 			Name:        "Updated Name",
 			Description: "Updated Description",
 		}
-		updateBody, _ := json.Marshal(updateReq)
-
-		req = httptest.NewRequest(http.MethodPut, "/api/meta/categories/100", bytes.NewBuffer(updateBody))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w = httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("failed to update category: %d", w.Code)
-		}
+		req = testutils.PerformRequest(router, http.MethodPut, "/api/meta/categories/100", updateReq, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, req.Code, "failed to update category")
 
 		// Get updated category
-		req = httptest.NewRequest(http.MethodGet, "/api/meta/categories/100", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w = httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		getReq := httptest.NewRequest(http.MethodGet, "/api/meta/categories/100", nil)
+		getReq.Header.Set("x-admin-token", "secret")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, getReq)
 
 		var res models.VotingCategoryResponse
-		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
-			t.Fatalf("failed to parse get response: %v", err)
-		}
-		if res.Name != "Updated Name" || res.Description != "Updated Description" {
-			t.Fatalf("category update did not persist: got %+v", res)
-		}
+		err := json.Unmarshal(w.Body.Bytes(), &res)
+		require.NoError(t, err, "failed to parse get response")
+		assert.Equal(t, "Updated Name", res.Name)
+		assert.Equal(t, "Updated Description", res.Description)
 	})
 
 	t.Run("Unhappy path - invalid ID", func(t *testing.T) {
@@ -349,17 +275,11 @@ func TestPutVotingCategory(t *testing.T) {
 			Name:        "Should Fail",
 			Description: "Invalid ID test",
 		}
-		body, _ := json.Marshal(reqBody)
-
-		req := httptest.NewRequest(http.MethodPut, "/api/meta/categories/notanumber", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 for invalid ID, got %d", w.Code)
-		}
+		req := testutils.PerformRequest(router, http.MethodPut, "/api/meta/categories/notanumber", reqBody, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusBadRequest, req.Code, "expected 400 for invalid ID")
 	})
 
 	t.Run("Unhappy path - empty name", func(t *testing.T) {
@@ -367,17 +287,11 @@ func TestPutVotingCategory(t *testing.T) {
 			Name:        "",
 			Description: "Missing name field",
 		}
-		body, _ := json.Marshal(reqBody)
-
-		req := httptest.NewRequest(http.MethodPut, "/api/meta/categories/200", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 for empty name, got %d", w.Code)
-		}
+		req := testutils.PerformRequest(router, http.MethodPut, "/api/meta/categories/200", reqBody, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusBadRequest, req.Code, "expected 400 for empty name")
 	})
 }
 
@@ -391,35 +305,24 @@ func TestListVotingCategories(t *testing.T) {
 			Name:        "Category " + strconv.Itoa(i),
 			Description: "Description " + strconv.Itoa(i),
 		}
-		body, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/meta/categories", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("failed to create category %d: got %d", i, w.Code)
-		}
+		req := testutils.PerformRequest(router, http.MethodPost, "/api/meta/categories", reqBody, map[string]string{
+			"Content-Type":  "application/json",
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, req.Code, "failed to create category %d", i)
 	}
 
 	// Act: List categories
-	getReq := httptest.NewRequest(http.MethodGet, "/api/meta/categories", nil)
-	getReq.Header.Set("x-admin-token", "secret")
-	getRes := httptest.NewRecorder()
-	router.ServeHTTP(getRes, getReq)
+	getRes := testutils.PerformRequest(router, http.MethodGet, "/api/meta/categories", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
 
-	if getRes.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got %d", getRes.Code)
-	}
+	require.Equal(t, http.StatusOK, getRes.Code, "expected 200 OK")
 
 	var categories []models.VotingCategoryResponse
-	if err := json.Unmarshal(getRes.Body.Bytes(), &categories); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
-	}
-	if len(categories) != 3 {
-		t.Fatalf("expected 3 categories, got %d", len(categories))
-	}
+	err := json.Unmarshal(getRes.Body.Bytes(), &categories)
+	require.NoError(t, err, "failed to unmarshal response")
+	assert.Len(t, categories, 3)
 
 	expected := map[int]string{
 		101: "Category 101",
@@ -427,8 +330,6 @@ func TestListVotingCategories(t *testing.T) {
 		103: "Category 103",
 	}
 	for _, cat := range categories {
-		if expected[cat.ID] != cat.Name {
-			t.Errorf("unexpected category data: %+v", cat)
-		}
+		assert.Equal(t, expected[cat.ID], cat.Name, "unexpected category data")
 	}
 }

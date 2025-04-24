@@ -1,9 +1,9 @@
 package controllers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	testutils "github.com/alex-pricope/simple-voting-system/api/controllers/testing"
 	"github.com/alex-pricope/simple-voting-system/api/models"
 	"github.com/alex-pricope/simple-voting-system/logging"
 	"github.com/alex-pricope/simple-voting-system/storage"
@@ -13,8 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"testing"
 )
@@ -24,9 +25,7 @@ func cleanupTeamTable(t *testing.T, client *dynamodb.Client, tableName string) {
 	out, err := client.Scan(context.TODO(), &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
 	})
-	if err != nil {
-		t.Fatalf("cleanup scan failed: %v", err)
-	}
+	require.NoError(t, err, "cleanup scan failed")
 	for _, item := range out.Items {
 		key := map[string]types.AttributeValue{
 			"PK": item["PK"],
@@ -35,9 +34,7 @@ func cleanupTeamTable(t *testing.T, client *dynamodb.Client, tableName string) {
 			TableName: aws.String(tableName),
 			Key:       key,
 		})
-		if err != nil {
-			t.Fatalf("cleanup delete failed: %v", err)
-		}
+		require.NoError(t, err, "cleanup delete failed")
 	}
 }
 
@@ -54,16 +51,14 @@ func setupTeamTestController(t *testing.T) (*TeamMetaController, *gin.Engine) {
 			}),
 		),
 	)
-	if err != nil {
-		t.Fatalf("failed to load AWS config: %v", err)
-	}
+	require.NoError(t, err, "failed to load AWS config")
 	client := dynamodb.NewFromConfig(cfg)
 	t.Cleanup(func() {
-		cleanupTeamTable(t, client, "Teams")
+		cleanupTeamTable(t, client, "VotingTeams")
 	})
 	s := &storage.DynamoTeamStorage{
 		Client:    client,
-		TableName: "Teams",
+		TableName: "VotingTeams",
 	}
 	controller := NewTeamMetaController(s)
 	gin.SetMode(gin.TestMode)
@@ -86,18 +81,12 @@ func TestCreateTeam(t *testing.T) {
 			Description: "Test team",
 			Members:     []string{"Alice", "Bob"},
 		}
-		body, _ := json.Marshal(req)
 
-		r := httptest.NewRequest(http.MethodPost, "/api/meta/teams", bytes.NewBuffer(body))
-		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", req, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		router.ServeHTTP(w, r)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
-		}
+		require.Equal(t, http.StatusOK, res.Code, "expected 200 OK: %s", res.Body.String())
 	})
 
 	t.Run("Unhappy path - empty name", func(t *testing.T) {
@@ -107,18 +96,14 @@ func TestCreateTeam(t *testing.T) {
 			Description: "No name",
 			Members:     []string{"X", "Y"},
 		}
-		body, _ := json.Marshal(req)
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
 
-		r := httptest.NewRequest(http.MethodPost, "/api/meta/teams", bytes.NewBuffer(body))
-		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", body, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		router.ServeHTTP(w, r)
-
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
-		}
+		require.Equal(t, http.StatusBadRequest, res.Code, "expected 400: %s", res.Body.String())
 	})
 
 	t.Run("Unhappy path - duplicate ID", func(t *testing.T) {
@@ -128,18 +113,12 @@ func TestCreateTeam(t *testing.T) {
 			Description: "Should conflict",
 			Members:     []string{"Z"},
 		}
-		body, _ := json.Marshal(req)
 
-		r := httptest.NewRequest(http.MethodPost, "/api/meta/teams", bytes.NewBuffer(body))
-		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", req, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		router.ServeHTTP(w, r)
-
-		if w.Code != http.StatusConflict {
-			t.Fatalf("expected 409 Conflict, got %d: %s", w.Code, w.Body.String())
-		}
+		require.Equal(t, http.StatusConflict, res.Code, "expected 409 Conflict: %s", res.Body.String())
 	})
 }
 
@@ -154,12 +133,11 @@ func TestUpdateTeam(t *testing.T) {
 			Description: "Villains",
 			Members:     []string{"Jessie", "James", "Meowth"},
 		}
-		body, _ := json.Marshal(createReq)
-		req := httptest.NewRequest(http.MethodPost, "/api/meta/teams", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", createReq, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, res.Code, "expected 200 OK on create")
 
 		// Update: change name, description, remove Meowth
 		updateReq := models.TeamUpdateRequest{
@@ -167,31 +145,25 @@ func TestUpdateTeam(t *testing.T) {
 			Description: "Still villains",
 			Members:     []string{"Jessie", "James"},
 		}
-		updateBody, _ := json.Marshal(updateReq)
-		req = httptest.NewRequest(http.MethodPut, "/api/meta/teams/10", bytes.NewBuffer(updateBody))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w = httptest.NewRecorder()
-		router.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
-		}
+		res = testutils.PerformRequest(router, http.MethodPut, "/api/meta/teams/10", updateReq, map[string]string{
+			"x-admin-token": "secret",
+		})
+
+		require.Equal(t, http.StatusOK, res.Code, "expected 200 OK: %s", res.Body.String())
 
 		// Get and validate
-		req = httptest.NewRequest(http.MethodGet, "/api/meta/teams/10", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w = httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		res = testutils.PerformRequest(router, http.MethodGet, "/api/meta/teams/10", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		var res models.TeamResponse
-		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
-		if res.Name != "Team Rocket Updated" || res.Description != "Still villains" ||
-			len(res.Members) != 2 || res.ID != createReq.ID {
-			t.Errorf("unexpected update result: %+v", res)
-		}
+		var response models.TeamResponse
+		err := json.Unmarshal(res.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
+		assert.Equal(t, "Team Rocket Updated", response.Name)
+		assert.Equal(t, "Still villains", response.Description)
+		assert.Len(t, response.Members, 2)
+		assert.Equal(t, createReq.ID, response.ID)
 	})
 
 	t.Run("Happy path - add new member", func(t *testing.T) {
@@ -201,41 +173,30 @@ func TestUpdateTeam(t *testing.T) {
 			Description: "Updated again",
 			Members:     []string{"Jessie", "James", "Wobbuffet"},
 		}
-		body, _ := json.Marshal(updateReq)
-		req := httptest.NewRequest(http.MethodPut, "/api/meta/teams/10", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
-		}
+		res := testutils.PerformRequest(router, http.MethodPut, "/api/meta/teams/10", updateReq, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		req = httptest.NewRequest(http.MethodGet, "/api/meta/teams/10", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w = httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, res.Code, "expected 200 OK: %s", res.Body.String())
 
-		var res models.TeamResponse
-		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
-			t.Fatalf("failed to unmarshal response: %v", err)
-		}
-		if len(res.Members) != 3 || res.Members[2] != "Wobbuffet" {
-			t.Errorf("expected new member Wobbuffet, got %+v", res.Members)
-		}
+		res = testutils.PerformRequest(router, http.MethodGet, "/api/meta/teams/10", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+
+		var response models.TeamResponse
+		err := json.Unmarshal(res.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to unmarshal response")
+		assert.Len(t, response.Members, 3)
+		assert.Equal(t, "Wobbuffet", response.Members[2])
 	})
 
 	t.Run("Unhappy path - invalid ID in path", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPut, "/api/meta/teams/notanumber", bytes.NewBuffer([]byte(`{}`)))
-		req.Header.Set("x-admin-token", "secret")
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		res := testutils.PerformRequest(router, http.MethodPut, "/api/meta/teams/notanumber", []byte(`{}`), map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 for invalid ID, got %d", w.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, res.Code, "expected 400 for invalid ID")
 	})
 
 	t.Run("Unhappy path - missing name", func(t *testing.T) {
@@ -244,16 +205,13 @@ func TestUpdateTeam(t *testing.T) {
 			Description: "Missing name",
 			Members:     []string{"Alpha"},
 		}
-		body, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest(http.MethodPut, "/api/meta/teams/10", bytes.NewBuffer(body))
-		req.Header.Set("x-admin-token", "secret")
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		res := testutils.PerformRequest(router, http.MethodPut, "/api/meta/teams/10", body, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 for empty name, got %d", w.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, res.Code, "expected 400 for empty name")
 	})
 }
 
@@ -267,52 +225,41 @@ func TestGetTeamByID(t *testing.T) {
 			Description: "Search test",
 			Members:     []string{"One", "Two"},
 		}
-		body, _ := json.Marshal(req)
 
-		r := httptest.NewRequest(http.MethodPost, "/api/meta/teams", bytes.NewBuffer(body))
-		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, r)
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", req, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, res.Code, "expected 200 OK on create")
 
-		getReq := httptest.NewRequest(http.MethodGet, "/api/meta/teams/20", nil)
-		getReq.Header.Set("x-admin-token", "secret")
-		getRes := httptest.NewRecorder()
-		router.ServeHTTP(getRes, getReq)
+		getRes := testutils.PerformRequest(router, http.MethodGet, "/api/meta/teams/20", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if getRes.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK, got %d: %s", getRes.Code, getRes.Body.String())
-		}
+		require.Equal(t, http.StatusOK, getRes.Code, "expected 200 OK: %s", getRes.Body.String())
 
-		var res models.TeamResponse
-		if err := json.Unmarshal(getRes.Body.Bytes(), &res); err != nil {
-			t.Fatalf("failed to parse response: %v", err)
-		}
-		if res.ID != 20 || res.Name != req.Name || res.Description != req.Description || len(res.Members) != 2 {
-			t.Fatalf("unexpected data in team response: %+v", res)
-		}
+		var response models.TeamResponse
+		err := json.Unmarshal(getRes.Body.Bytes(), &response)
+		require.NoError(t, err, "failed to parse response")
+		require.Equal(t, 20, response.ID)
+		require.Equal(t, req.Name, response.Name)
+		require.Equal(t, req.Description, response.Description)
+		require.Len(t, response.Members, 2)
 	})
 
 	t.Run("Unhappy path - invalid ID format", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/meta/teams/notanumber", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		res := testutils.PerformRequest(router, http.MethodGet, "/api/meta/teams/notanumber", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 for invalid ID, got %d", w.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, res.Code, "expected 400 for invalid ID")
 	})
 
 	t.Run("Unhappy path - non-existing ID", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/meta/teams/999", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		res := testutils.PerformRequest(router, http.MethodGet, "/api/meta/teams/999", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if w.Code != http.StatusNotFound {
-			t.Fatalf("expected 404 for non-existing ID, got %d", w.Code)
-		}
+		require.Equal(t, http.StatusNotFound, res.Code, "expected 404 for non-existing ID")
 	})
 }
 
@@ -327,46 +274,31 @@ func TestListTeams(t *testing.T) {
 			Description: "Description " + strconv.Itoa(i),
 			Members:     []string{"MemberA", "MemberB"},
 		}
-		body, _ := json.Marshal(req)
-		r := httptest.NewRequest(http.MethodPost, "/api/meta/teams", bytes.NewBuffer(body))
-		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, r)
+		res := testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", req, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if w.Code != http.StatusOK {
-			t.Fatalf("POST team %d failed: %d - %s", i, w.Code, w.Body.String())
-		}
+		require.Equal(t, http.StatusOK, res.Code, "POST team %d failed: %d - %s", i, res.Code, res.Body.String())
 	}
 
 	// Get all teams
-	getReq := httptest.NewRequest(http.MethodGet, "/api/meta/teams", nil)
-	getReq.Header.Set("x-admin-token", "secret")
-	getRes := httptest.NewRecorder()
-	router.ServeHTTP(getRes, getReq)
+	getRes := testutils.PerformRequest(router, http.MethodGet, "/api/meta/teams", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
 
-	if getRes.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got %d", getRes.Code)
-	}
+	require.Equal(t, http.StatusOK, getRes.Code, "expected 200 OK")
 
 	var teams []models.TeamResponse
-	if err := json.Unmarshal(getRes.Body.Bytes(), &teams); err != nil {
-		t.Fatalf("failed to parse team list: %v", err)
-	}
-	if len(teams) != 5 {
-		t.Fatalf("expected 5 teams, got %d", len(teams))
-	}
+	err := json.Unmarshal(getRes.Body.Bytes(), &teams)
+	require.NoError(t, err, "failed to parse team list")
+	assert.Len(t, teams, 5)
 
 	for _, team := range teams {
-		if team.ID < 1 || team.ID > 5 {
-			t.Errorf("unexpected team ID: %d", team.ID)
-		}
-		if team.Name == "" || team.Description == "" {
-			t.Errorf("missing name or description for team ID %d", team.ID)
-		}
-		if len(team.Members) != 2 {
-			t.Errorf("unexpected members for team ID %d: %+v", team.ID, team.Members)
-		}
+		assert.GreaterOrEqual(t, team.ID, 1, "unexpected team ID")
+		assert.LessOrEqual(t, team.ID, 5, "unexpected team ID")
+		assert.NotEmpty(t, team.Name, "missing name for team ID %d", team.ID)
+		assert.NotEmpty(t, team.Description, "missing description for team ID %d", team.ID)
+		assert.Len(t, team.Members, 2, "unexpected members for team ID %d", team.ID)
 	}
 }
 
@@ -380,54 +312,37 @@ func TestDeleteTeam(t *testing.T) {
 			Description: "To be deleted",
 			Members:     []string{"Ghost"},
 		}
-		body, _ := json.Marshal(req)
-		createReq := httptest.NewRequest(http.MethodPost, "/api/meta/teams", bytes.NewBuffer(body))
-		createReq.Header.Set("Content-Type", "application/json")
-		createReq.Header.Set("x-admin-token", "secret")
-		createRes := httptest.NewRecorder()
-		router.ServeHTTP(createRes, createReq)
-		if createRes.Code != http.StatusOK {
-			t.Fatalf("setup create failed: %d - %s", createRes.Code, createRes.Body.String())
-		}
+		createRes := testutils.PerformRequest(router, http.MethodPost, "/api/meta/teams", req, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, createRes.Code, "setup create failed: %d - %s", createRes.Code, createRes.Body.String())
 
 		// Delete the team
-		delReq := httptest.NewRequest(http.MethodDelete, "/api/meta/teams/99", nil)
-		delReq.Header.Set("x-admin-token", "secret")
-		delRes := httptest.NewRecorder()
-		router.ServeHTTP(delRes, delReq)
-		if delRes.Code != http.StatusOK {
-			t.Fatalf("expected 200 on delete, got %d", delRes.Code)
-		}
+		delRes := testutils.PerformRequest(router, http.MethodDelete, "/api/meta/teams/99", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, delRes.Code, "expected 200 on delete")
 
 		// Ensure it's gone
-		getReq := httptest.NewRequest(http.MethodGet, "/api/meta/teams/99", nil)
-		getReq.Header.Set("x-admin-token", "secret")
-		getRes := httptest.NewRecorder()
-		router.ServeHTTP(getRes, getReq)
-		if getRes.Code != http.StatusNotFound {
-			t.Fatalf("expected 404 after delete, got %d", getRes.Code)
-		}
+		getRes := testutils.PerformRequest(router, http.MethodGet, "/api/meta/teams/99", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusNotFound, getRes.Code, "expected 404 after delete")
 	})
 
 	t.Run("Unhappy path - delete non-existing ID", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/meta/teams/1000", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		res := testutils.PerformRequest(router, http.MethodDelete, "/api/meta/teams/1000", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 for idempotent delete, got %d", w.Code)
-		}
+		require.Equal(t, http.StatusOK, res.Code, "expected 200 for idempotent delete")
 	})
 
 	t.Run("Unhappy path - invalid ID format", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/meta/teams/notanumber", nil)
-		req.Header.Set("x-admin-token", "secret")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
+		res := testutils.PerformRequest(router, http.MethodDelete, "/api/meta/teams/notanumber", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 for invalid ID, got %d", w.Code)
-		}
+		require.Equal(t, http.StatusBadRequest, res.Code, "expected 400 for invalid ID")
 	})
 }
