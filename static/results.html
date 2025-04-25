@@ -52,7 +52,7 @@
 <script>
 
   const isLocal = location.hostname === "localhost";
-  const API_BASE_URL = isLocal ? "http://localhost:8080/api" : "https://your-api-id.execute-api.eu-west-1.amazonaws.com/api";
+  const API_BASE_URL = isLocal ? "http://localhost:8080/api" : "https://api.vote.qurl.ws/api";
 
   function renderResults(data) {
     const container = document.getElementById("results-container");
