@@ -43,15 +43,66 @@
     <h2 class="text-3xl font-bold text-orange-400 mb-6">Cast Your Vote</h2>
 
     <div class="mb-8 p-4 border border-gray-700 rounded-xl bg-gray-900">
-        <h3 class="text-lg text-orange-300 font-semibold mb-2">How Voting Works</h3>
-        <ul class="text-sm text-gray-400 list-disc list-inside space-y-1">
-            <li>You have received a unique voting code that <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">can only be used once</code>.</li>
-            <li>Each code has a category associated: <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">grand_jury</code>, <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">other_team</code> and <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">general_public</code>.</li>
-            <li>Once entered, you'll be able to score each team across the categories.</li>
-            <li>Use the star ratings to evaluate fairly — 1 being the lowest and 5 the highest.</li>
-            <li>Formula will be added here (TODO)</li>
-            <li>Your vote counts towards the final results. Take your time and be fair!</li>
+      <button id="toggleVotingWorks" class="text-lg text-orange-300 font-semibold mb-2 underline focus:outline-none flex items-center select-none" aria-expanded="false">
+        <span id="votingWorksTitle">How Voting Works</span>
+        <span id="votingWorksIcon" class="ml-2">▼</span>
+      </button>
+      <div id="votingWorksDetails" class="text-sm text-gray-400 mt-2 space-y-1 hidden">
+        <ul class="list-disc list-inside">
+          <li>
+            You have received a unique voting code that <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">can only be used once</code>.
+          </li>
+          <li>
+            Code categories:
+            <ul class="list-disc list-inside ml-6">
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">grand_jury</code> (50%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">other_team</code> (30%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">general_public</code> (20%)</li>
+            </ul>
+          </li>
+          <li>
+            Voting categories:
+            <ul class="list-disc list-inside ml-6">
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Tech / Design / Innovation</code> (30%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Fun &amp; Potential</code> (25%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Quality</code> (25%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Presentation</code> (20%)</li>
+            </ul>
+          </li>
+          <li>Once entered, you'll be able to score each team across the categories.</li>
+          <li>Use the star ratings to evaluate fairly — 1 being the lowest and 5 the highest.</li>
+          <li>Your vote counts towards the final results. Take your time and be fair!</li>
         </ul>
+      </div>
+    </div>
+    <div class="mb-8 p-4 border border-gray-700 rounded-xl bg-gray-900">
+      <button id="toggleFormula" class="text-lg text-orange-300 font-semibold mb-2 underline focus:outline-none flex items-center select-none" aria-expanded="false">
+        <span id="formulaTitle">How the Score is Calculated</span>
+        <span id="formulaIcon" class="ml-2">▼</span>
+      </button>
+      <div id="formulaExplanation" class="text-sm text-gray-400 mt-2 space-y-2 hidden">
+        <p>Each rating is weighted based on:</p>
+        <ul class="list-disc list-inside pl-4">
+          <li>Voting code type (e.g., grand_jury: 50%, other_team: 30%, general_public: 20%)</li>
+          <li>Voting category weight (Tech/Design/Innovation: 30%, Fun & Potential: 25%, Quality: 25%, Presentation: 20%)</li>
+        </ul>
+        <p><strong>Calculation:</strong></p>
+        <p>Final score per rating = (Rating) × (Code category weight) × (Voting category weight)</p>
+        <p><strong>Example:</strong></p>
+        <p>
+          A person from <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">grand_jury</code> gives a rating of 4 to a team in the
+          <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Tech/Design/Innovation</code> category:
+          <br>
+          4 × 2.5 × 0.3 = <strong>3.0</strong>
+        </p>
+        <p>
+          Another person from <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">other_team</code> gives a rating of 5 in
+          <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Fun & Potential</code>:
+          <br>
+          5 × 1.5 × 0.25 = <strong>1.875</strong>
+        </p>
+        <p>The team's total score is the sum of all category scores (averaged per team and category).</p>
+      </div>
     </div>
 
     <form id="voteForm" class="space-y-6">
@@ -282,6 +333,28 @@
             }
         });
     });
+</script>
+</script>
+<script>
+  // Expand/collapse for "How Voting Works"
+  const toggleVotingWorksBtn = document.getElementById('toggleVotingWorks');
+  const votingWorksDetails = document.getElementById('votingWorksDetails');
+  const votingWorksIcon = document.getElementById('votingWorksIcon');
+  toggleVotingWorksBtn.addEventListener('click', () => {
+    const expanded = votingWorksDetails.classList.toggle('hidden') === false;
+    votingWorksIcon.textContent = votingWorksDetails.classList.contains('hidden') ? "▼" : "▲";
+    toggleVotingWorksBtn.setAttribute('aria-expanded', !votingWorksDetails.classList.contains('hidden'));
+  });
+
+  // Expand/collapse for "How the Score is Calculated"
+  const toggleFormulaBtn = document.getElementById('toggleFormula');
+  const formulaDiv = document.getElementById('formulaExplanation');
+  const formulaIcon = document.getElementById('formulaIcon');
+  toggleFormulaBtn.addEventListener('click', () => {
+    const expanded = formulaDiv.classList.toggle('hidden') === false;
+    formulaIcon.textContent = formulaDiv.classList.contains('hidden') ? "▼" : "▲";
+    toggleFormulaBtn.setAttribute('aria-expanded', !formulaDiv.classList.contains('hidden'));
+  });
 </script>
 </body>
 </html>

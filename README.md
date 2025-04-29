@@ -9,7 +9,6 @@ The idea was to create a **simple voting system**
 * Only **1 vote per person** - using a unique `voting code` to stop dupe voting
 * Have a very `simple and intuitive` UI
 * Each code has a `weight` - this was a requirement: the `grand_jury` vote has more weight than the `other_team` or `general_public`
-  * So, each code has a `category`
 * Another requirement was for _people to vote for all teams, and rate them under categories_
   * So, I decided to use a `5-star` system for each team for each category
   * This allows me to apply weights to each category - _maybe presentation is more important than fun?_
@@ -121,5 +120,60 @@ The project, while could be a lot better, is simple
   * Check the file for additional targets
 
 
-## How to run this locally?
+### How to run this locally?
 Use the makefile targets, for example, `make run-local` will build, generate swagger, start localstack (needs docker running), run the tests, start the app. 
+
+## The vote process
+We have 3 categories of voters:
+* `grand_jury` with a weight of **0.5**
+* `other_team` with a weight of **0.3**
+* `general_public` with a weight of **0.2** 
+
+We also define voting categories with each own weights. Let's consider the below as demo purposes only. 
+* `presentation` with a weight of **0.5**
+* `innovation` with a weight of **0.4**
+* `fun` with a weight of **0.1**
+
+Let's assume we have 2 teams: `teamA` and `teamB`
+
+There are `5 voters`: 2 grand_jury, 2 other_team and 1 general_public
+
+> The front-end requires that all voters cast their vote on all teams and all categories so the importance of the voter gets distributed.
+
+## 🧮 Voting Score Calculation
+
+Each vote is cast by a user for **every team** across **all categories**. The final team score is computed by averaging the **weighted score** in each category.
+
+### 🔢 Computation Formula
+
+Each individual vote contributes:
+
+```
+weighted_score = rating × voter_weight × category_weight
+```
+
+Where:
+- `rating` is between 1–5
+- `voter_weight` depends on the voting group (e.g., `grand_jury = 1.25`, `other_team = 1.0`, `general_public = 0.75`)
+- `category_weight` is configured per category (e.g., `presentation = 0.4`, `execution = 0.6`)
+
+### 🗾️ Example
+
+Assume:
+- Voter `A` from `grand_jury`
+- Category weights:
+  - Cat1 = 0.4
+  - Cat2 = 0.6
+- Voter `A` rates `Team X`:
+  - 4 stars in Cat1
+  - 5 stars in Cat2
+
+Then:
+```
+Cat1 Score = 4 × 1.25 × 0.4 = 2.0
+Cat2 Score = 5 × 1.25 × 0.6 = 3.75
+Total Score = 2.0 + 3.75 = 5.75 (across 2 categories)
+Normalized = 5.75 / 2 = 2.875
+```
+
+If multiple voters submit ratings, the score per category is **averaged**, then all category averages are summed for the final team score.
