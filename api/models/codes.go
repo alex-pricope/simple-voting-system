@@ -25,6 +25,7 @@ type CodeValidationResponse struct {
 	Used      bool      `json:"used,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	Code      string    `json:"code,omitempty"`
+	TeamID    *int      `json:"team_id,omitempty"`
 }
 
 type CreateCodeRequest struct {
@@ -37,6 +38,7 @@ type CodeResponse struct {
 	Code      string    `json:"code"`
 	CreatedAt time.Time `json:"created_at"`
 	Used      bool      `json:"used"`
+	TeamID    *int      `json:"team_id,omitempty"`
 }
 
 func TransformVotingCodeToValidationResponse(vc *storage.VotingCode) *CodeValidationResponse {
@@ -46,6 +48,7 @@ func TransformVotingCodeToValidationResponse(vc *storage.VotingCode) *CodeValida
 		Used:      vc.Used,
 		CreatedAt: vc.CreatedAt,
 		Code:      vc.Code,
+		TeamID:    vc.TeamID,
 	}
 }
 
@@ -55,5 +58,6 @@ func TransformVotingCodeToCodeResponse(vc *storage.VotingCode) *CodeResponse {
 		Used:      vc.Used,
 		CreatedAt: vc.CreatedAt,
 		Code:      vc.Code,
+		TeamID:    vc.TeamID,
 	}
 }

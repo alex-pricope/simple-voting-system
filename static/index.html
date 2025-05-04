@@ -160,6 +160,21 @@
             document.getElementById('loading').classList.remove('hidden');
 
             [categories, teams] = await Promise.all([fetchCategories(), fetchTeams()]);
+
+            // Exclude user's own team and show a message if applicable
+            if (result.team_id) {
+              const excludedTeam = teams.find(team => team.id === result.team_id);
+              if (excludedTeam) {
+                const exclusionPanel = document.createElement('div');
+                exclusionPanel.className = 'mb-8 p-4 border border-gray-700 rounded-xl bg-gray-900 text-sm text-orange-300';
+                exclusionPanel.innerHTML = `Note: Your team (<span class="font-semibold">${excludedTeam.name}</span>) has been excluded from the vote.`;
+                // Insert the exclusion panel below the info panels (below formula panel) and above the form
+                const formulaPanel = document.getElementById('toggleFormula').closest('div');
+                formulaPanel.insertAdjacentElement('afterend', exclusionPanel);
+              }
+              teams = teams.filter(team => team.id !== result.team_id);
+            }
+
             renderVotingForm(categories, teams);
 
             document.getElementById('loading').classList.add('hidden');

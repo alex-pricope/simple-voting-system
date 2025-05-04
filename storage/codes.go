@@ -17,6 +17,7 @@ type VotingCodeStorage interface {
 	MarkUnused(ctx context.Context, code string) error
 	MarkUsed(ctx context.Context, code string) error
 	Delete(ctx context.Context, code string) error
+	Overwrite(ctx context.Context, code *VotingCode) error
 }
 
 type DynamoVotingCodesStorage struct {
@@ -86,6 +87,26 @@ func (s *DynamoVotingCodesStorage) Put(ctx context.Context, code *VotingCode) er
 	})
 	if err != nil {
 		logging.Log.Errorf("PUT storage failed: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (s *DynamoVotingCodesStorage) Overwrite(ctx context.Context, code *VotingCode) error {
+	if code.CreatedAt.IsZero() {
+		code.CreatedAt = time.Now().UTC()
+	}
+	item, err := attributevalue.MarshalMap(code)
+	if err != nil {
+		logging.Log.Errorf("failed to marshal code: %v", err)
+		return err
+	}
+	_, err = s.Client.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: &s.TableName,
+		Item:      item,
+	})
+	if err != nil {
+		logging.Log.Errorf("OVERWRITE failed: %v", err)
 		return err
 	}
 	return nil

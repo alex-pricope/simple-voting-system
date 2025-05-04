@@ -57,14 +57,14 @@ func setupTestVoteController(t *testing.T) (*VotingController, *gin.Engine) {
 	}
 
 	t.Cleanup(func() {
-		cleanupTable(t, db, "VotingCodes")
 		cleanupTableVotes(t, db)
+		cleanupTable(t, db, "VotingCodes")
 		cleanupTable(t, db, "VotingTeams")
 		cleanupTable(t, db, "VotingCategories")
 	})
 
 	votingController := NewVotingController(codeStorage, voteStorage, teamStorage, categoriesStorage)
-	adminController := NewAdminController(codeStorage)
+	adminController := NewAdminController(codeStorage, teamStorage)
 	teamsController := NewTeamMetaController(teamStorage)
 	categoriesController := NewCategoryMetaController(categoriesStorage)
 	gin.SetMode(gin.TestMode)

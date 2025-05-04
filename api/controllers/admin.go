@@ -8,16 +8,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/matoous/go-nanoid/v2"
 	"net/http"
+	"strconv"
 	"time"
 )
 
 type AdminController struct {
 	codesStorage storage.VotingCodeStorage
+	teamsStorage storage.TeamStorage
 }
 
-func NewAdminController(s storage.VotingCodeStorage) *AdminController {
+func NewAdminController(codes storage.VotingCodeStorage, teams storage.TeamStorage) *AdminController {
 	return &AdminController{
-		codesStorage: s,
+		codesStorage: codes,
+		teamsStorage: teams,
 	}
 }
 
@@ -29,6 +32,7 @@ func (c *AdminController) RegisterRoutes(engine *gin.Engine) {
 	group.DELETE("/codes/:code", c.deleteCode)
 	group.POST("/codes/reset", c.resetVotes)
 	group.POST("/codes/:code/reset", c.resetCode)
+	group.POST("/codes/:code/attach-team/:teamId", c.attachTeam)
 	group.GET("/categories", c.listCategories)
 	group.GET("/codes/:category", c.getCodesByCategory)
 }
@@ -193,6 +197,57 @@ func (c *AdminController) resetCode(g *gin.Context) {
 
 	logging.Log.Infof("ADMIN: reset code: %s", code)
 	g.JSON(http.StatusOK, gin.H{"reset": code})
+}
+
+// @Security AdminToken
+// attachTeam godoc
+// @Summary Attach a team to a voting code
+// @Tags admin
+// @Produce json
+// @Param code path string true "Voting code"
+// @Param teamId path int true "Team ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /api/admin/codes/{code}/attach-team/{teamId} [post]
+func (c *AdminController) attachTeam(g *gin.Context) {
+	code := g.Param("code")
+	teamIDStr := g.Param("teamId")
+	if code == "" || teamIDStr == "" {
+		g.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "missing code or teamId"})
+		return
+	}
+
+	teamID, err := strconv.Atoi(teamIDStr)
+	if err != nil {
+		g.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid teamId"})
+		return
+	}
+
+	team, err := c.teamsStorage.Get(g.Request.Context(), teamID)
+	if err != nil || team == nil {
+		logging.Log.Errorf("ADMIN: team %d not found or lookup failed: %v", teamID, err)
+		g.JSON(http.StatusNotFound, models.ErrorResponse{Error: "team not found"})
+		return
+	}
+
+	voteCode, err := c.codesStorage.Get(g.Request.Context(), code)
+	if err != nil {
+		logging.Log.Errorf("ADMIN: failed to get code %s: %v", code, err)
+		g.JSON(http.StatusNotFound, models.ErrorResponse{Error: "code not found"})
+		return
+	}
+
+	voteCode.TeamID = &teamID
+	if err := c.codesStorage.Overwrite(g.Request.Context(), voteCode); err != nil {
+		logging.Log.Errorf("ADMIN: failed to update code %s with team ID: %v", code, err)
+		g.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "could not update team ID"})
+		return
+	}
+
+	logging.Log.Infof("ADMIN: attached team %d to code %s", teamID, code)
+	g.JSON(http.StatusOK, gin.H{"message": "team attached", "code": code, "teamId": teamID})
 }
 
 // @Security AdminToken

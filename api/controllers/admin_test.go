@@ -36,23 +36,30 @@ func setupTestAdminController(t *testing.T) (*AdminController, *gin.Engine) {
 	require.NoError(t, err, "failed to load AWS config")
 
 	db := dynamodb.NewFromConfig(cfg)
-	s := &storage.DynamoVotingCodesStorage{
+	v := &storage.DynamoVotingCodesStorage{
 		Client:    db,
 		TableName: "VotingCodes",
+	}
+
+	s := &storage.DynamoTeamStorage{
+		Client:    db,
+		TableName: "VotingTeams",
 	}
 
 	// teardown
 	t.Cleanup(func() {
 		cleanupTable(t, db, "VotingCodes")
+		cleanupTable(t, db, "VotingTeams")
 	})
 
-	controller := NewAdminController(s)
+	controller := NewAdminController(v, s)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.POST("/api/admin/codes", controller.createCode)
 	r.GET("/api/admin/codes", controller.listCodes)
 	r.GET("/api/admin/codes/:category", controller.getCodesByCategory)
 	r.DELETE("/api/admin/codes/:code", controller.deleteCode)
+	r.POST("api/admin/codes/:code/attach-team/:teamId", controller.attachTeam)
 	r.POST("/api/admin/codes/:code/reset", controller.resetCode)
 
 	return controller, r
@@ -288,7 +295,7 @@ func TestCreateVotingCodes(t *testing.T) {
 
 func TestGetCategories(t *testing.T) {
 	logging.Log = logrus.New()
-	controller := NewAdminController(nil)
+	controller := NewAdminController(nil, nil)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/api/admin/categories", controller.listCategories)
@@ -365,4 +372,63 @@ func TestResetVotingCode(t *testing.T) {
 			assert.False(t, c.Used, "expected code %s to be marked as unused", code)
 		}
 	}
+}
+
+func TestAttachTeamToCode(t *testing.T) {
+	controller, router := setupTestAdminController(t)
+
+	t.Run("Happy path", func(t *testing.T) {
+		// Create teams
+		team1 := storage.Team{ID: 101, Name: "Team A"}
+		team2 := storage.Team{ID: 102, Name: "Team B"}
+		err := controller.teamsStorage.Create(context.TODO(), &team1)
+		require.NoError(t, err)
+		err = controller.teamsStorage.Create(context.TODO(), &team2)
+		require.NoError(t, err)
+
+		// Create 3 codes
+		payload := models.CreateCodeRequest{
+			Count:    3,
+			Category: "other_team",
+		}
+		postRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", payload, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, postRes.Code)
+
+		var codes []*models.CodeResponse
+		err = json.Unmarshal(postRes.Body.Bytes(), &codes)
+		require.NoError(t, err)
+		require.Len(t, codes, 3)
+
+		// Attach team1 to first code
+		res1 := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes/"+codes[0].Code+"/attach-team/101", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		assert.Equal(t, http.StatusOK, res1.Code)
+
+		// Attach team2 to second code
+		res2 := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes/"+codes[1].Code+"/attach-team/102", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		assert.Equal(t, http.StatusOK, res2.Code)
+
+		// Get codes by category and verify all 3
+		getRes := testutils.PerformRequest(router, http.MethodGet, "/api/admin/codes/other_team", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		require.Equal(t, http.StatusOK, getRes.Code)
+
+		var result []*models.CodeResponse
+		err = json.Unmarshal(getRes.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 3)
+	})
+
+	t.Run("Unhappy path - non-existing code", func(t *testing.T) {
+		invalidCodeRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes/INVALID/attach-team/101", nil, map[string]string{
+			"x-admin-token": "secret",
+		})
+		assert.Equal(t, http.StatusNotFound, invalidCodeRes.Code)
+	})
 }
