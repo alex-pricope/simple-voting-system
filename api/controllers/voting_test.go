@@ -64,7 +64,7 @@ func setupTestVoteController(t *testing.T) (*VotingController, *gin.Engine) {
 	})
 
 	votingController := NewVotingController(codeStorage, voteStorage, teamStorage, categoriesStorage)
-	adminController := NewAdminController(codeStorage, teamStorage)
+	adminController := NewAdminController(codeStorage, teamStorage, voteStorage)
 	teamsController := NewTeamMetaController(teamStorage)
 	categoriesController := NewCategoryMetaController(categoriesStorage)
 	gin.SetMode(gin.TestMode)

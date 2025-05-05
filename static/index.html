@@ -210,7 +210,8 @@
             section.className = 'border-t border-gray-700 pt-4';
 
             const title = document.createElement('h3');
-            title.className = 'text-xl font-bold text-orange-400 mb-3';
+            // Add sticky, top-0, z-10, bg-gray-800, border-b, border-gray-700, py-2 for sticky effect and visibility
+            title.className = 'text-xl font-bold text-orange-400 mb-3 sticky top-0 z-10 bg-gray-800 border-b border-gray-700 py-2';
             title.textContent = `Category: ${category.name}`;
             section.appendChild(title);
 

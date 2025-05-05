@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	testutils "github.com/alex-pricope/simple-voting-system/api/controllers/testing"
 	"github.com/alex-pricope/simple-voting-system/api/models"
 	"github.com/alex-pricope/simple-voting-system/logging"
@@ -17,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
+	"time"
 )
 
 //nolint:staticcheck
@@ -46,13 +48,19 @@ func setupTestAdminController(t *testing.T) (*AdminController, *gin.Engine) {
 		TableName: "VotingTeams",
 	}
 
+	vv := &storage.DynamoVoteStorage{
+		Client:    db,
+		TableName: "Votes",
+	}
+
 	// teardown
 	t.Cleanup(func() {
 		cleanupTable(t, db, "VotingCodes")
 		cleanupTable(t, db, "VotingTeams")
+		cleanupTableVotes(t, db)
 	})
 
-	controller := NewAdminController(v, s)
+	controller := NewAdminController(v, s, vv)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.POST("/api/admin/codes", controller.createCode)
@@ -61,6 +69,7 @@ func setupTestAdminController(t *testing.T) (*AdminController, *gin.Engine) {
 	r.DELETE("/api/admin/codes/:code", controller.deleteCode)
 	r.POST("api/admin/codes/:code/attach-team/:teamId", controller.attachTeam)
 	r.POST("/api/admin/codes/:code/reset", controller.resetCode)
+	r.POST("api/admin/votes/delete-all", controller.deleteAllVotes)
 
 	return controller, r
 }
@@ -295,7 +304,7 @@ func TestCreateVotingCodes(t *testing.T) {
 
 func TestGetCategories(t *testing.T) {
 	logging.Log = logrus.New()
-	controller := NewAdminController(nil, nil)
+	controller := NewAdminController(nil, nil, nil)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/api/admin/categories", controller.listCategories)
@@ -431,4 +440,86 @@ func TestAttachTeamToCode(t *testing.T) {
 		})
 		assert.Equal(t, http.StatusNotFound, invalidCodeRes.Code)
 	})
+}
+func TestDeleteAllVotes(t *testing.T) {
+	controller, router := setupTestAdminController(t)
+
+	// Create a team
+	team := storage.Team{ID: 201, Name: "Team Z"}
+	err := controller.teamsStorage.Create(context.TODO(), &team)
+	require.NoError(t, err)
+
+	// Create a voting code and attach the team
+	codeReq := models.CreateCodeRequest{
+		Count:    1,
+		Category: "other_team",
+	}
+	codeRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes", codeReq, map[string]string{
+		"x-admin-token": "secret",
+	})
+	require.Equal(t, http.StatusOK, codeRes.Code)
+
+	var codes []*models.CodeResponse
+	err = json.Unmarshal(codeRes.Body.Bytes(), &codes)
+	require.NoError(t, err)
+	require.Len(t, codes, 1)
+	voteCode := codes[0].Code
+
+	// Attach team to code
+	attachRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/codes/"+voteCode+"/attach-team/201", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
+	require.Equal(t, http.StatusOK, attachRes.Code)
+
+	// Simulate 10 votes (each with 3 entries)
+	for i := 0; i < 10; i++ {
+		voteReq := models.RegisterVoteRequest{
+			Code: voteCode,
+			Votes: []models.VoteEntry{
+				{CategoryID: 1, TeamID: 301, Rating: 5},
+				{CategoryID: 2, TeamID: 302, Rating: 4},
+				{CategoryID: 3, TeamID: 303, Rating: 3},
+			},
+		}
+		_ = controller.votesStorage.Create(context.TODO(), &storage.Vote{
+			Code:       voteReq.Code,
+			SortKey:    fmt.Sprintf("cat#1#team#301#%d", i),
+			CategoryID: 1,
+			TeamID:     301,
+			Rating:     5,
+			Timestamp:  time.Now().UTC(),
+		})
+		_ = controller.votesStorage.Create(context.TODO(), &storage.Vote{
+			Code:       voteReq.Code,
+			SortKey:    fmt.Sprintf("cat#2#team#302#%d", i),
+			CategoryID: 2,
+			TeamID:     302,
+			Rating:     4,
+			Timestamp:  time.Now().UTC(),
+		})
+		_ = controller.votesStorage.Create(context.TODO(), &storage.Vote{
+			Code:       voteReq.Code,
+			SortKey:    fmt.Sprintf("cat#3#team#303#%d", i),
+			CategoryID: 3,
+			TeamID:     303,
+			Rating:     3,
+			Timestamp:  time.Now().UTC(),
+		})
+	}
+
+	// Ensure votes exist
+	votes, err := controller.votesStorage.GetAll(context.TODO())
+	require.NoError(t, err)
+	require.NotEmpty(t, votes)
+
+	// Delete all votes
+	deleteRes := testutils.PerformRequest(router, http.MethodPost, "/api/admin/votes/delete-all", nil, map[string]string{
+		"x-admin-token": "secret",
+	})
+	require.Equal(t, http.StatusOK, deleteRes.Code)
+
+	// Assert all votes are deleted
+	votesAfter, err := controller.votesStorage.GetAll(context.TODO())
+	require.NoError(t, err)
+	require.Len(t, votesAfter, 0)
 }

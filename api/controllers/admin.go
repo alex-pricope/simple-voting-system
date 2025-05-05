@@ -15,12 +15,14 @@ import (
 type AdminController struct {
 	codesStorage storage.VotingCodeStorage
 	teamsStorage storage.TeamStorage
+	votesStorage storage.VoteStorage
 }
 
-func NewAdminController(codes storage.VotingCodeStorage, teams storage.TeamStorage) *AdminController {
+func NewAdminController(codes storage.VotingCodeStorage, teams storage.TeamStorage, votes storage.VoteStorage) *AdminController {
 	return &AdminController{
 		codesStorage: codes,
 		teamsStorage: teams,
+		votesStorage: votes,
 	}
 }
 
@@ -35,6 +37,7 @@ func (c *AdminController) RegisterRoutes(engine *gin.Engine) {
 	group.POST("/codes/:code/attach-team/:teamId", c.attachTeam)
 	group.GET("/categories", c.listCategories)
 	group.GET("/codes/:category", c.getCodesByCategory)
+	group.DELETE("/votes", c.deleteAllVotes)
 }
 
 // @Security AdminToken
@@ -317,4 +320,22 @@ func (c *AdminController) generateShortCode() string {
 		return "ERROR"
 	}
 	return code
+}
+
+// @Security AdminToken
+// deleteAllVotes godoc
+// @Summary Delete all votes
+// @Tags admin
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 500 {object} models.ErrorResponse
+// @Router /api/admin/votes [delete]
+func (c *AdminController) deleteAllVotes(g *gin.Context) {
+	if err := c.votesStorage.DeleteAll(g.Request.Context()); err != nil {
+		logging.Log.Errorf("ADMIN: failed to delete all votes: %v", err)
+		g.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "could not delete all votes"})
+		return
+	}
+	logging.Log.Infof("ADMIN: deleted all votes")
+	g.JSON(http.StatusOK, gin.H{"message": "all votes deleted"})
 }
