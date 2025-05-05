@@ -28,7 +28,7 @@ run-local: swag-init test
 	APP_ENV=local go run main.go
 
 swag-init:
-	rm -rf docs
+	rm -f docs/docs.go docs/swagger.json docs/swagger.yaml
 	swag init
 
 # Package Lambda binary after tests pass

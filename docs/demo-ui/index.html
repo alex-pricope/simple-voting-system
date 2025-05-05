@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MNL voting</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Fira Code', monospace;
+        }
+        .star {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .star:hover,
+        .star.hovered,
+        .star.selected {
+            color: #f97316; /* orange-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 min-h-screen flex flex-col items-center justify-start p-6">
+<div id="code-entry" class="w-full max-w-xl bg-gray-800 shadow-md rounded-2xl p-6 mt-10">
+<!-- Loading Spinner -->
+<div id="loading" class="hidden mt-10">
+  <div class="flex justify-center">
+    <svg class="animate-spin h-8 w-8 text-orange-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+    </svg>
+  </div>
+  <p class="text-center text-orange-300 mt-2">Loading voting form...</p>
+</div>
+    <h2 class="text-2xl font-semibold text-orange-400 mb-4">Enter Your Voting Code</h2>
+    <input type="text" id="votingCode" class="w-full p-3 border rounded-xl mb-3 bg-gray-700 text-white" placeholder="Enter your code..." />
+    <button onclick="validateCode()" class="w-full bg-orange-600 text-white p-3 rounded-xl hover:bg-orange-700 transition">Start Voting</button>
+    <div id="codeError" class="text-red-400 mt-2 hidden">Invalid or already used code.</div>
+</div>
+
+<div id="votingForm" class="w-full max-w-4xl bg-gray-800 shadow-md rounded-2xl p-6 mt-10 hidden">
+    <h2 class="text-3xl font-bold text-orange-400 mb-6">Cast Your Vote</h2>
+
+    <div class="mb-8 p-4 border border-gray-700 rounded-xl bg-gray-900">
+      <button id="toggleVotingWorks" class="text-lg text-orange-300 font-semibold mb-2 underline focus:outline-none flex items-center select-none" aria-expanded="false">
+        <span id="votingWorksTitle">How Voting Works</span>
+        <span id="votingWorksIcon" class="ml-2">▼</span>
+      </button>
+      <div id="votingWorksDetails" class="text-sm text-gray-400 mt-2 space-y-1 hidden">
+        <ul class="list-disc list-inside">
+          <li>
+            You have received a unique voting code that <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">can only be used once</code>.
+          </li>
+          <li>
+            Code categories:
+            <ul class="list-disc list-inside ml-6">
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">grand_jury</code> (50%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">other_team</code> (30%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">general_public</code> (20%)</li>
+            </ul>
+          </li>
+          <li>
+            Voting categories:
+            <ul class="list-disc list-inside ml-6">
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Tech / Design / Innovation</code> (30%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Fun &amp; Potential</code> (25%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Quality</code> (25%)</li>
+              <li><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Presentation</code> (20%)</li>
+            </ul>
+          </li>
+          <li>Once entered, you'll be able to score each team across the categories.</li>
+          <li>Use the star ratings to evaluate fairly — 1 being the lowest and 5 the highest.</li>
+          <li>Your vote counts towards the final results. Take your time and be fair!</li>
+        </ul>
+      </div>
+    </div>
+    <div class="mb-8 p-4 border border-gray-700 rounded-xl bg-gray-900">
+      <button id="toggleFormula" class="text-lg text-orange-300 font-semibold mb-2 underline focus:outline-none flex items-center select-none" aria-expanded="false">
+        <span id="formulaTitle">How the Score is Calculated</span>
+        <span id="formulaIcon" class="ml-2">▼</span>
+      </button>
+      <div id="formulaExplanation" class="text-sm text-gray-400 mt-2 space-y-2 hidden">
+        <p>Each rating is weighted based on:</p>
+        <ul class="list-disc list-inside pl-4">
+          <li>Voting code type (e.g., grand_jury: 50%, other_team: 30%, general_public: 20%)</li>
+          <li>Voting category weight (Tech/Design/Innovation: 30%, Fun & Potential: 25%, Quality: 25%, Presentation: 20%)</li>
+        </ul>
+        <p><strong>Calculation:</strong></p>
+        <p>Final score per rating = (Rating) × (Code category weight) × (Voting category weight)</p>
+        <p><strong>Example:</strong></p>
+        <p>
+          A person from <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">grand_jury</code> gives a rating of 4 to a team in the
+          <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Tech/Design/Innovation</code> category:
+          <br>
+          4 × 2.5 × 0.3 = <strong>3.0</strong>
+        </p>
+        <p>
+          Another person from <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">other_team</code> gives a rating of 5 in
+          <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Fun & Potential</code>:
+          <br>
+          5 × 1.5 × 0.25 = <strong>1.875</strong>
+        </p>
+        <p>
+          The team's total score is the sum of the average scores from each category. Each category's score is calculated by averaging the weighted ratings received from all voters. <br><br>
+          The final total reflects how well the team performed across all voting categories, considering both the importance of the category and the weight of the voter.
+        </p>
+      </div>
+    </div>
+
+    <form id="voteForm" class="space-y-6">
+        <!-- Categories dynamically inserted here -->
+        <button type="submit" class="w-full bg-green-600 text-white p-3 rounded-xl hover:bg-green-700 transition">Submit Vote</button>
+    </form>
+</div>
+
+<footer class="mt-12 text-sm text-gray-500">
+    Made by Alex Pricope: <a href="https://github.com/alex-pricope/simple-voting-system" target="_blank" class="text-orange-400 underline hover:text-orange-300">source code</a>
+</footer>
+
+<script>
+    const isLocal = location.hostname === "localhost";
+    const API_BASE_URL = isLocal ? "http://localhost:8080/api" : "https://api.vote.qurl.ws/api";
+    const tooltips = ['Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+
+    let categories = [];
+    let teams = [];
+
+    // --- MOCKED DATA FOR DEMO EXPERIENCE ---
+    async function fetchTeams() {
+      return [
+        { id: 1, name: "Team Alpha", members: ["Alice", "Bob"] },
+        { id: 2, name: "Team Beta", members: ["Charlie", "Dana"] },
+        { id: 3, name: "Team Gamma", members: ["Eve", "Frank"] }
+      ];
+    }
+
+    async function fetchCategories() {
+      return [
+        { id: 1, name: "Innovation", description: "Creativity and originality" },
+        { id: 2, name: "Execution", description: "Implementation quality and completeness" },
+        { id: 3, name: "Presentation", description: "Clarity and delivery of the idea" }
+      ];
+    }
+
+    async function validateCode() {
+      const code = document.getElementById('votingCode').value.trim();
+      const errorDiv = document.getElementById('codeError');
+
+      if (!code) {
+        errorDiv.textContent = 'Please enter a code.';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+
+      // Mocked validation
+      const result = {
+        valid: true,
+        used: false,
+        category: "other_team",
+        team_id: 2 // Assume Team Beta is the voter's team
+      };
+
+      errorDiv.classList.add('hidden');
+      document.getElementById('code-entry').classList.add('hidden');
+      document.getElementById('loading').classList.remove('hidden');
+
+      [categories, teams] = await Promise.all([fetchCategories(), fetchTeams()]);
+
+      if (result.team_id) {
+        const excludedTeam = teams.find(team => team.id === result.team_id);
+        if (excludedTeam) {
+          const exclusionPanel = document.createElement('div');
+          exclusionPanel.className = 'mb-8 p-4 border border-gray-700 rounded-xl bg-gray-900 text-sm text-orange-300';
+          exclusionPanel.innerHTML = `Note: Your team (<span class="font-semibold">${excludedTeam.name}</span>) has been excluded from the vote.`;
+          const formulaPanel = document.getElementById('toggleFormula').closest('div');
+          formulaPanel.insertAdjacentElement('afterend', exclusionPanel);
+        }
+        teams = teams.filter(team => team.id !== result.team_id);
+      }
+
+      renderVotingForm(categories, teams);
+
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('votingForm').classList.remove('hidden');
+
+      const votingTitle = document.querySelector('#votingForm h2');
+      votingTitle.textContent = 'Cast Your Vote';
+
+      let details = document.querySelector('#votingDetails');
+      if (!details) {
+        details = document.createElement('div');
+        details.id = 'votingDetails';
+        details.className = 'text-xs text-orange-300 mt-3';
+        votingTitle.insertAdjacentElement('afterend', details);
+      }
+      details.innerHTML = `<span class="underline">Code: ${code}</span><br><span class="underline">Category: ${result.category}</span></br></br>`;
+    }
+
+    function renderVotingForm(categoriesParam, teamsParam) {
+        const form = document.getElementById('voteForm');
+        const submitBtn = form.querySelector('button[type="submit"]');
+
+        categoriesParam.forEach((category, catIndex) => {
+            const section = document.createElement('div');
+            section.className = 'border-t border-gray-700 pt-4';
+
+            const title = document.createElement('h3');
+            // Add sticky, top-0, z-10, bg-gray-800, border-b, border-gray-700, py-2 for sticky effect and visibility
+            title.className = 'text-xl font-bold text-orange-400 mb-3 sticky top-0 z-10 bg-gray-800 border-b border-gray-700 py-2';
+            title.textContent = `Category: ${category.name}`;
+            section.appendChild(title);
+
+            const description = document.createElement('p');
+            description.className = 'italic text-sm text-orange-300 mb-4';
+            description.textContent = category.description;
+            section.appendChild(description);
+
+            teamsParam.forEach((team, teamIndex) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'mb-4';
+
+                const label = document.createElement('label');
+                label.className = 'block text-lg font-semibold text-white mb-1 team-label';
+                label.id = `label-cat${catIndex}-team${teamIndex}`;
+                label.innerHTML = `<code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">${team.name}</code>`;
+                wrapper.appendChild(label);
+
+                const membersText = document.createElement('p');
+                membersText.className = 'text-sm text-gray-400 mb-1';
+                membersText.textContent = `[${team.members.join(', ')}]`;
+                wrapper.appendChild(membersText);
+
+                const starContainer = document.createElement('div');
+                starContainer.className = 'flex space-x-2';
+
+                for (let i = 1; i <= 5; i++) {
+                    const star = document.createElement('span');
+                    star.className = 'star text-gray-600 text-4xl';
+                    star.innerHTML = '&#9733;';
+                    star.title = tooltips[i - 1];
+                    star.dataset.value = i;
+                    star.addEventListener('mouseenter', () => highlightStars(starContainer, i));
+                    star.addEventListener('mouseleave', () => resetStars(starContainer));
+                    star.addEventListener('click', () => selectStars(starContainer, catIndex, teamIndex, i));
+                    starContainer.appendChild(star);
+                }
+
+                wrapper.appendChild(starContainer);
+                section.appendChild(wrapper);
+            });
+
+            form.insertBefore(section, submitBtn);
+        });
+    }
+
+    function highlightStars(container, value) {
+        const stars = container.querySelectorAll('.star');
+        stars.forEach((star, index) => {
+            star.classList.toggle('hovered', index < value);
+        });
+    }
+
+    function resetStars(container) {
+        const stars = container.querySelectorAll('.star');
+        stars.forEach(star => star.classList.remove('hovered'));
+    }
+
+    const selectedRatings = {};
+
+    function selectStars(container, catIndex, teamIndex, value) {
+        const key = `category${catIndex + 1}_team${teamIndex + 1}`;
+        selectedRatings[key] = value;
+
+        const stars = container.querySelectorAll('.star');
+        stars.forEach((star, index) => {
+            star.classList.toggle('selected', index < value);
+        });
+    }
+
+    document.getElementById('voteForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const code = document.getElementById('votingCode').value;
+      const voteEntries = [];
+      let hasErrors = false;
+
+      // Clear previous errors
+      document.querySelectorAll('.rating-error').forEach(el => el.remove());
+      document.querySelectorAll('.team-label').forEach(el => el.classList.remove('text-red-500'));
+
+      categories.forEach((category, catIndex) => {
+        teams.forEach((team, teamIndex) => {
+          const key = `category${catIndex + 1}_team${teamIndex + 1}`;
+          const rating = selectedRatings[key];
+
+          if (!rating) {
+            hasErrors = true;
+            const labelSelector = `#label-cat${catIndex}-team${teamIndex}`;
+            const label = document.querySelector(labelSelector);
+            if (label) {
+              label.classList.add('text-red-500');
+              const errorText = document.createElement('span');
+              errorText.textContent = ' - required';
+              errorText.className = 'rating-error text-sm ml-2';
+              label.appendChild(errorText);
+            }
+          } else {
+            voteEntries.push({
+              categoryId: category.id,
+              teamId: team.id,
+              rating: rating
+            });
+          }
+        });
+      });
+
+      if (hasErrors) return;
+
+      // MOCK vote submission for demo (no fetch)
+      const submitBtn = document.querySelector('#voteForm button[type="submit"]');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        submitBtn.textContent = 'Vote Submitted';
+      }
+      document.getElementById('votingForm').innerHTML += '<div class="text-center text-green-400 text-xl font-semibold mt-4">Thank you for voting!</div>';
+    });
+</script>
+</script>
+<script>
+  // Expand/collapse for "How Voting Works"
+  const toggleVotingWorksBtn = document.getElementById('toggleVotingWorks');
+  const votingWorksDetails = document.getElementById('votingWorksDetails');
+  const votingWorksIcon = document.getElementById('votingWorksIcon');
+  toggleVotingWorksBtn.addEventListener('click', () => {
+    const expanded = votingWorksDetails.classList.toggle('hidden') === false;
+    votingWorksIcon.textContent = votingWorksDetails.classList.contains('hidden') ? "▼" : "▲";
+    toggleVotingWorksBtn.setAttribute('aria-expanded', !votingWorksDetails.classList.contains('hidden'));
+  });
+
+  // Expand/collapse for "How the Score is Calculated"
+  const toggleFormulaBtn = document.getElementById('toggleFormula');
+  const formulaDiv = document.getElementById('formulaExplanation');
+  const formulaIcon = document.getElementById('formulaIcon');
+  toggleFormulaBtn.addEventListener('click', () => {
+    const expanded = formulaDiv.classList.toggle('hidden') === false;
+    formulaIcon.textContent = formulaDiv.classList.contains('hidden') ? "▼" : "▲";
+    toggleFormulaBtn.setAttribute('aria-expanded', !formulaDiv.classList.contains('hidden'));
+  });
+</script>
+</body>
+</html>

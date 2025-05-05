@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MNL voting results</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Fira Code', monospace;
+    }
+    .star {
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .star:hover,
+    .star.hovered,
+    .star.selected {
+      color: #f97316; /* orange-500 */
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-200 min-h-screen flex flex-col items-center justify-start p-6">
+<div class="w-full max-w-4xl bg-gray-800 shadow-md rounded-2xl p-6 mt-10">
+  <h1 class="text-3xl font-bold text-orange-400 mb-6 text-center w-full">Voting results</h1>
+
+  <div id="results-container" class="space-y-6">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 text-center">
+      <div class="bg-gray-700 p-4 rounded-xl">
+        <h2 class="text-orange-500 font-semibold text-m uppercase mb-1">Codes Used</h2>
+        <p class="text-gray-300 text-xs">The number of unique codes used</p>
+        <br>
+        <p class="text-3xl font-bold text-white">00</p>
+      </div>
+      <div class="bg-gray-700 p-4 rounded-xl">
+        <h2 class="text-orange-500 font-semibold text-m uppercase mb-1">Total Votes</h2>
+        <p class="text-gray-300 text-xs">Normalized by team and category</p>
+        <br>
+        <p class="text-3xl font-bold text-white">00</p>
+      </div>
+      <div class="bg-gray-700 p-4 rounded-xl">
+        <h2 class="text-orange-500 font-semibold text-m uppercase mb-1">Winning team</h2>
+        <br>
+        <p class="text-gray-300 font-bold text-white text-m">XXX</p>
+      </div>
+    </div>
+    <!-- Results will be dynamically inserted here -->
+  </div>
+</div>
+
+<script>
+
+  const isLocal = location.hostname === "localhost";
+  const API_BASE_URL = isLocal ? "http://localhost:8080/api" : "https://api.vote.qurl.ws/api";
+
+  function renderResults(data) {
+    const container = document.getElementById("results-container");
+    const dynamicBlocks = document.querySelectorAll(".dynamic-team");
+    dynamicBlocks.forEach(el => el.remove());
+
+    data.forEach((team, index) => {
+      const teamBlock = document.createElement("div");
+      teamBlock.className = "border border-gray-300 rounded p-4 dynamic-team flex-1";
+
+      const teamHeader = document.createElement("h2");
+      teamHeader.className = "text-xl font-bold text-orange-400 mb-1";
+      teamHeader.innerText = `${team.teamName}`;
+      teamBlock.appendChild(teamHeader);
+
+      const memberArray = document.createElement("div");
+      memberArray.className = "text-xs text-orange-700 mb-1";
+      memberArray.innerText = `[${team.teamMembers.join(", ")}]`;
+      teamBlock.appendChild(memberArray);
+
+      const scoreText = document.createElement("div");
+      scoreText.className = "text-xl font-bold text-gray-200 mb-3";
+      scoreText.innerText = `Total Score: ${team.totalScore.toFixed(3)}`;
+      teamBlock.appendChild(scoreText);
+
+      const categoryList = document.createElement("ul");
+      categoryList.className = "list-disc pl-5 text-gray-400";
+      team.categories.forEach(cat => {
+        const li = document.createElement("li");
+        li.innerText = `${cat.category} (${cat.score.toFixed(3)})`;
+        categoryList.appendChild(li);
+      });
+
+      teamBlock.appendChild(categoryList);
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "flex items-start gap-4 dynamic-team w-full";
+      wrapper.appendChild(teamBlock);
+      container.appendChild(wrapper);
+    });
+  }
+
+  async function fetchResults() {
+    const mockResults = {
+      usedCodes: 5,
+      totalVotes: 180,
+      results: [
+        {
+          teamName: "Team Alpha",
+          teamMembers: ["Alice", "Bob"],
+          totalScore: 93.456,
+          categories: [
+            { category: "Innovation", score: 31.123 },
+            { category: "Execution", score: 30.111 },
+            { category: "Presentation", score: 32.222 }
+          ]
+        },
+        {
+          teamName: "Team Beta",
+          teamMembers: ["Charlie", "Dana"],
+          totalScore: 89.321,
+          categories: [
+            { category: "Innovation", score: 29.987 },
+            { category: "Execution", score: 29.456 },
+            { category: "Presentation", score: 29.878 }
+          ]
+        },
+        {
+          teamName: "Team Gamma",
+          teamMembers: ["Eve", "Frank"],
+          totalScore: 85.102,
+          categories: [
+            { category: "Innovation", score: 28.300 },
+            { category: "Execution", score: 28.701 },
+            { category: "Presentation", score: 28.101 }
+          ]
+        },
+        {
+          teamName: "Team Delta",
+          teamMembers: ["Grace", "Heidi"],
+          totalScore: 82.500,
+          categories: [
+            { category: "Innovation", score: 27.000 },
+            { category: "Execution", score: 27.000 },
+            { category: "Presentation", score: 28.500 }
+          ]
+        },
+        {
+          teamName: "Team Epsilon",
+          teamMembers: ["Ivan", "Judy"],
+          totalScore: 80.000,
+          categories: [
+            { category: "Innovation", score: 26.000 },
+            { category: "Execution", score: 27.000 },
+            { category: "Presentation", score: 27.000 }
+          ]
+        }
+      ]
+    };
+
+    document.querySelector(".text-3xl.font-bold.text-white").innerText = mockResults.usedCodes;
+    document.querySelectorAll(".text-3xl.font-bold.text-white")[1].innerText = mockResults.totalVotes;
+    document.querySelector(".text-gray-300.font-bold.text-white.text-m").innerText = mockResults.results[0]?.teamName || "N/A";
+    renderResults(mockResults.results);
+  }
+
+  fetchResults();
+</script>
+<footer class="mt-12 text-sm text-gray-500">
+  Made by Alex Pricope: <a href="https://github.com/alex-pricope/simple-voting-system" target="_blank" class="text-orange-400 underline hover:text-orange-300">source code</a>
+</footer>
+</body>
+</html>

@@ -16,4 +16,6 @@
 .idea/
 /node_modules/
 /build
-/docs
+docs/docs.go
+docs/swagger.json
+docs/swagger.yaml
