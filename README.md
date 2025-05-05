@@ -140,11 +140,11 @@ There are `5 voters`: 2 grand_jury, 2 other_team and 1 general_public
 
 > The front-end requires that all voters cast their vote on all teams and all categories so the importance of the voter gets distributed.
 
-## 🧮 Voting Score Calculation
+## Voting Score Calculation
 
 Each vote is cast by a user for **every team** across **all categories**. The final team score is computed by averaging the **weighted score** in each category.
 
-### 🔢 Computation Formula
+### Computation Formula
 
 Each individual vote contributes:
 
@@ -157,7 +157,7 @@ Where:
 - `voter_weight` depends on the voting group (e.g., `grand_jury = 1.25`, `other_team = 1.0`, `general_public = 0.75`)
 - `category_weight` is configured per category (e.g., `presentation = 0.4`, `execution = 0.6`)
 
-### 🗾️ Example
+### Example
 
 Assume:
 - Voter `A` from `grand_jury`
