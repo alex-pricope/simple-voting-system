@@ -22,6 +22,8 @@ The voting UI uses a few simple API requests that should be public.
 * `GET : /api/results` - display the results
 * `GET : /api/meta/categories` - get the categories for the voting
 * `GET : /api/meta/teams` - get the teams and details
+![image](https://github.com/user-attachments/assets/b11d65d6-b6ee-42d2-91ca-2eb3d69e0d7d)
+
 
 On top of these, I decided to create some private endpoints - available only in `swagger` running from my machine on the day of voting.
 These are only here to do maintenance and manual intervention and should not be on a critical path. 
@@ -34,26 +36,34 @@ Of course, a real API should be versioned as well.
 The admin group is used to manage the initial voting codes.
 * `POST : /api/admin/codes` - private - create new codes (bulk) by category
 * `GET : /api/admin/codes` - private - get all the codes
+* `GET : /api/admin/categories` - private - get all the voting categories
 * `GET : /api/admin/codes/{category}` - private - get all the codes for category
 * `DELETE : /api/admin/codes/{code}` - private - delete a specific code
 * `POST : /api/admin/codes/{code}/reset` - private - reset a code to unused
 * `POST : /api/admin/codes/reset` - private - reset all codes to unused
+* `DELETE : /api/admin/votes` - private - delete all votes
+![image](https://github.com/user-attachments/assets/58774c00-bfc0-4c3e-a875-c9acc5fed8b6)
+
 
 ### Meta: Voting categories
 The Voting Categories are used to manage the categories where the teams will be voted for. This is displayed on the UI.
-* `GET : /api/meta/categories` - public - (ui uses this)
-* `GET : /api/meta/categories/{ID}` - private -
-* `POST : /api/meta/categories` - private - 
-* `PUT : /api/meta/categories/{ID}` - private -
-* `DELETE : /api/meta/categories/{ID}` - private -
+* `GET : /api/meta/categories` - public - (used by UI)
+* `GET : /api/meta/categories/{ID}` - private - get all categories by ID
+* `POST : /api/meta/categories` - private - create a new voting category
+* `PUT : /api/meta/categories/{ID}` - private - update a voting category by ID
+* `DELETE : /api/meta/categories/{ID}` - private - delete a voting category by ID
+![image](https://github.com/user-attachments/assets/6fde6af7-5476-41c9-82d7-485d602df4cc)
+
 
 ### Meta: Teams
 The Teams group is used to manage the teams (and its members)
-* `GET : /api/meta/teams` - public - (ui uses this)
-* `GET : /api/meta/teams/{ID}` - private -
-* `POST : /api/meta/teams` - private -
-* `PUT : /api/meta/teams/{ID}` - private -
-* `DELETE : /api/meta/teams/{ID}` - private -
+* `GET : /api/meta/teams` - public - (used by UI)
+* `GET : /api/meta/teams/{ID}` - private - get a team by ID
+* `POST : /api/meta/teams` - private - create a team
+* `PUT : /api/meta/teams/{ID}` - private - update a team
+* `DELETE : /api/meta/teams/{ID}` - private - delete a team
+![image](https://github.com/user-attachments/assets/3798d1b1-4789-4410-a126-405167678886)
+
 
 ## AWS
 To keep the costs at a minimum and because I am dealing with around 100 - 200 burst requests I decided to use the following components
