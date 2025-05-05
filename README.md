@@ -1,6 +1,6 @@
 ### 🚀 Demo
 
-- [Voting UI](https://alex-pricope.github.io/simple-voting-system/demo-ui/index.html)
+- [Voting UI (use any code)](https://alex-pricope.github.io/simple-voting-system/demo-ui/index.html)
 - [Results Page](https://alex-pricope.github.io/simple-voting-system/demo-ui/results.html)
 
 ## Why this?
@@ -137,6 +137,12 @@ The project, while could be a lot better, is simple
 
 ### How to run this locally?
 Use the makefile targets, for example, `make run-local` will build, generate swagger, start localstack (needs docker running), run the tests, start the app. 
+
+## UI
+The solution uses 2 simple html pages that uses the data from some of the API calls 
+* /static/index.html - landing page for the voting process, takes in a voting code
+* /static/results.html - results page that shows the voting results
+
 
 ## The vote process
 We have 3 categories of voters:
