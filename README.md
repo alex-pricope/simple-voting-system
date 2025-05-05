@@ -140,8 +140,8 @@ Use the makefile targets, for example, `make run-local` will build, generate swa
 
 ## UI
 The solution uses 2 simple html pages that uses the data from some of the API calls 
-* /static/index.html - landing page for the voting process, takes in a voting code
-* /static/results.html - results page that shows the voting results
+* `/static/index.html` - landing page for the voting process, takes in a voting code
+* `/static/results.html` - results page that shows the voting results
 
 
 ## The vote process
