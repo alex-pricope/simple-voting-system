@@ -1,3 +1,8 @@
+### 🚀 Demo
+
+- [Voting UI](https://alex-pricope.github.io/simple-voting-system/demo-ui/index.html)
+- [Results Page](https://alex-pricope.github.io/simple-voting-system/demo-ui/results.html)
+
 ## Why this?
 Recently I offered my help in organizing the current company's yearly hackathon and the team asked me to deal with the voting system.
 I wanted to move away from the classic _Excel spreadsheet + Google Form_.
