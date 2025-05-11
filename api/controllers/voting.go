@@ -74,13 +74,15 @@ func (c *VotingController) registerVote(g *gin.Context) {
 			Rating:     v.Rating,
 			Timestamp:  time.Now().UTC(),
 		}
-		logging.Log.Infof("Writing vote PK: %s, SK: %s", vote.Code, vote.SortKey)
+		logging.Log.Infof("Writing vote PK: %s, SK: %s, R: %d", vote.Code, vote.SortKey, vote.Rating)
 		if err := c.votesStorage.Create(g.Request.Context(), vote); err != nil {
-			logging.Log.Errorf("failed to create vote: %v", err)
+			logging.Log.Errorf("Failed to create vote PK: %s, SK: %s, R: %d,  %v",
+				vote.Code, vote.SortKey, vote.Rating, err)
 			if strings.Contains(err.Error(), "ConditionalCheckFailedException") {
-				g.JSON(http.StatusConflict, &models.ErrorResponse{Error: "vote already exists or was submitted before"})
+				g.JSON(http.StatusConflict, &models.ErrorResponse{Error: fmt.Sprintf("vote already exists or was submitted before PK: %s, SK: %s, R: %d",
+					vote.Code, vote.SortKey, vote.Rating)})
 			} else {
-				g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: "could not save vote"})
+				g.JSON(http.StatusInternalServerError, &models.ErrorResponse{Error: fmt.Sprintf("could not save vote PK: %s, SK: %s, R: %d", vote.Code, vote.SortKey, vote.Rating)})
 			}
 			return
 		}
@@ -301,6 +303,10 @@ func calculateVoteResults(
 
 		// Create both weights
 		voterWeight, categoryWeight := models.CodeCategoryWeights[models.VotingCategory(codeCategory)], votingCategory.Weight
+
+		if voterWeight == 0 {
+			logging.Log.Warnf("Unknown voter category %q; weight is 0", codeCategory)
+		}
 
 		// The computed rating for each vote line
 		// (user_rating) × (importance of who votes) × (importance of what they're voting on)

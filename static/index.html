@@ -80,32 +80,46 @@
         <span id="formulaTitle">How the Score is Calculated</span>
         <span id="formulaIcon" class="ml-2">▼</span>
       </button>
-      <div id="formulaExplanation" class="text-sm text-gray-400 mt-2 space-y-2 hidden">
-        <p>Each rating is weighted based on:</p>
-        <ul class="list-disc list-inside pl-4">
-          <li>Voting code type (e.g., grand_jury: 50%, other_team: 30%, general_public: 20%)</li>
-          <li>Voting category weight (Tech/Design/Innovation: 30%, Fun & Potential: 25%, Quality: 25%, Presentation: 20%)</li>
-        </ul>
-        <p><strong>Calculation:</strong></p>
-        <p>Final score per rating = (Rating) × (Code category weight) × (Voting category weight)</p>
-        <p><strong>Example:</strong></p>
-        <p>
-          A person from <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">grand_jury</code> gives a rating of 4 to a team in the
-          <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Tech/Design/Innovation</code> category:
-          <br>
-          4 × 2.5 × 0.3 = <strong>3.0</strong>
-        </p>
-        <p>
-          Another person from <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">other_team</code> gives a rating of 5 in
-          <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Fun & Potential</code>:
-          <br>
-          5 × 1.5 × 0.25 = <strong>1.875</strong>
-        </p>
-        <p>
-          The team's total score is the sum of the average scores from each category. Each category's score is calculated by averaging the weighted ratings received from all voters. <br><br>
-          The final total reflects how well the team performed across all voting categories, considering both the importance of the category and the weight of the voter.
-        </p>
-      </div>
+        <div id="formulaExplanation" class="text-sm text-gray-400 mt-2 space-y-2 hidden">
+          <p>Each rating is weighted based on:</p>
+          <ul class="list-disc list-inside pl-4">
+            <li>Voter type weight:
+              <ul class="list-disc list-inside ml-6">
+                <li><em>grand_jury</em>: 0.5</li>
+                <li><em>other_team</em>: 0.3</li>
+                <li><em>general_public</em>: 0.2</li>
+              </ul>
+            </li>
+            <li>Voting category weight:
+              <ul class="list-disc list-inside ml-6">
+                <li><em>Tech / Design / Innovation</em>: 0.3</li>
+                <li><em>Fun &amp; Potential</em>: 0.25</li>
+                <li><em>Quality</em>: 0.25</li>
+                <li><em>Presentation</em>: 0.2</li>
+              </ul>
+            </li>
+          </ul>
+          <p><strong>Calculation:</strong></p>
+          <p><code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">score_per_vote = rating × voter type weight × category weight</code></p>
+
+          <p><strong>Example:</strong></p>
+          <p>
+            A person from <em>grand_jury</em> gives a rating of 4 in the <em>Tech / Design / Innovation</em> category:
+            <br>
+              <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">4 × 0.5 × 0.3 = <strong>0.6</strong></code>
+          </p>
+          <p>
+            Another person from <em>other_team</em> gives a rating of 5 in <em>Fun &amp; Potential</em>:
+            <br>
+              <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">5 × 0.3 × 0.25 = <strong>0.375</strong></code>
+          </p>
+          <p>
+            The team's total score is the sum of average scores per category, where each category score is the average of all weighted ratings.
+          </p>
+         <p>
+           <code class="bg-gray-700 text-orange-400 px-2 py-1 rounded">Final scores are relatively low (e.g., 0.5–0.8)</code> because we use raw weights without scaling. This keeps the system simple and focused on real differences between teams.
+         </p>
+        </div>
     </div>
 
     <form id="voteForm" class="space-y-6">
@@ -115,7 +129,7 @@
 </div>
 
 <footer class="mt-12 text-sm text-gray-500">
-    Made by Alex Pricope: <a href="https://github.com/alex-pricope/simple-voting-system" target="_blank" class="text-orange-400 underline hover:text-orange-300">source code</a>
+    Voting game by alexp: <a href="https://github.com/alex-pricope/simple-voting-system" target="_blank" class="text-orange-400 underline hover:text-orange-300">source code</a>
 </footer>
 
 <script>

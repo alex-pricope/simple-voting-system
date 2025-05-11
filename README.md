@@ -130,60 +130,78 @@ The project, while could be a lot better, is simple
   * Check the file for additional targets
 
 
-### How to run this locally?
+## How to run this locally?
 Use the makefile targets, for example, `make run-local` will build, generate swagger, start localstack (needs docker running), run the tests, start the app. 
 
+## Load Testing
+
+To validate the system's performance under pressure, I wrote a simple load test using [k6](https://k6.io/). The goal was to simulate 100 users submitting votes concurrently, verifying that voting remained consistent, and that no double submissions or code re-use occurred.
+
+### How to run it
+
+1. Install `k6` if you don't have it:
+   ```bash
+   brew install k6
+   ```
+
+2. Navigate to the `loadtesting/` folder (or wherever you saved the script) and run:
+   ```bash
+   k6 run load-test.js
+   ```
+
+The test script (`loadtesting/load-tests.js`) sends randomized but valid votes, logging errors and ensuring the system behaves correctly under load.
+
+
 ## The vote process
-We have 3 categories of voters:
-* `grand_jury` with a weight of **0.5**
-* `other_team` with a weight of **0.3**
-* `general_public` with a weight of **0.2** 
 
-We also define voting categories with each own weights. Let's consider the below as demo purposes only. 
-* `presentation` with a weight of **0.5**
-* `innovation` with a weight of **0.4**
-* `fun` with a weight of **0.1**
+There are 3 categories of voters:
+- `grand_jury` with a weight of **0.5**
+- `other_team` with a weight of **0.3**
+- `general_public` with a weight of **0.2**
 
-Let's assume we have 2 teams: `teamA` and `teamB`
+Each vote is evaluated across multiple voting categories, each with its own weight:
+- `presentation` with a weight of **0.5**
+- `innovation` with a weight of **0.4**
+- `fun` with a weight of **0.1**
 
-There are `5 voters`: 2 grand_jury, 2 other_team and 1 general_public
+All voters are required to vote on **all teams** and **all categories**, ensuring consistent input and fair weight distribution across all votes.
 
-> The front-end requires that all voters cast their vote on all teams and all categories so the importance of the voter gets distributed.
+---
 
 ## Voting Score Calculation
 
-Each vote is cast by a user for **every team** across **all categories**. The final team score is computed by averaging the **weighted score** in each category.
+Each vote is cast by a user for every team in every category.
 
-### Computation Formula
-
-Each individual vote contributes:
+Each individual vote contributes a **weighted score** based on:
 
 ```
 weighted_score = rating × voter_weight × category_weight
 ```
-
 Where:
-- `rating` is between 1–5
-- `voter_weight` depends on the voting group (e.g., `grand_jury = 1.25`, `other_team = 1.0`, `general_public = 0.75`)
-- `category_weight` is configured per category (e.g., `presentation = 0.4`, `execution = 0.6`)
+- `rating` is from 1 to 5 (selected by the voter)
+- `voter_weight` depends on the voter group (e.g., `grand_jury = 0.5`)
+- `category_weight` is the importance of the category (e.g., `presentation = 0.5`)
+
+---
 
 ### Example
 
 Assume:
-- Voter `A` from `grand_jury`
+- Voter A is from `grand_jury` (weight: 0.5)
 - Category weights:
-  - Cat1 = 0.4
-  - Cat2 = 0.6
-- Voter `A` rates `Team X`:
-  - 4 stars in Cat1
-  - 5 stars in Cat2
+  - Innovation = 0.4
+  - Presentation = 0.6
 
-Then:
+Voter A rates Team X:
+- 4 stars in Innovation
+- 5 stars in Presentation
+
 ```
-Cat1 Score = 4 × 1.25 × 0.4 = 2.0
-Cat2 Score = 5 × 1.25 × 0.6 = 3.75
-Total Score = 2.0 + 3.75 = 5.75 (across 2 categories)
-Normalized = 5.75 / 2 = 2.875
+Innovation score = 4 × 0.5 × 0.4 = 0.8
+Presentation score = 5 × 0.5 × 0.6 = 1.5
+Total team score from this voter = 0.8 + 1.5 = 2.3
 ```
 
-If multiple voters submit ratings, the score per category is **averaged**, then all category averages are summed for the final team score.
+If multiple voters cast votes, each team’s score per category is averaged across all voters, and the final team score is the **sum of category averages**.
+
+Because we use **low raw weights (e.g. 0.2)**, the final scores are also small (e.g. between 0.3 and 0.8), but this is by design — only **relative rankings** matter.
