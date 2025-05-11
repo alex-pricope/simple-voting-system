@@ -1,3 +1,8 @@
+### 🚀 Demo
+
+- [Voting UI (use any code)](https://alex-pricope.github.io/simple-voting-system/demo-ui/index.html)
+- [Results Page](https://alex-pricope.github.io/simple-voting-system/demo-ui/results.html)
+
 ## Why this?
 Recently I offered my help in organizing the current company's yearly hackathon and the team asked me to deal with the voting system.
 I wanted to move away from the classic _Excel spreadsheet + Google Form_.
@@ -133,6 +138,11 @@ The project, while could be a lot better, is simple
 ## How to run this locally?
 Use the makefile targets, for example, `make run-local` will build, generate swagger, start localstack (needs docker running), run the tests, start the app. 
 
+## UI
+The solution uses 2 simple html pages that uses the data from some of the API calls
+* `/static/index.html` - landing page for the voting process, takes in a voting code
+* `/static/results.html` - results page that shows the voting results
+
 ## Load Testing
 
 To validate the system's performance under pressure, I wrote a simple load test using [k6](https://k6.io/). The goal was to simulate 100 users submitting votes concurrently, verifying that voting remained consistent, and that no double submissions or code re-use occurred.
@@ -150,8 +160,6 @@ To validate the system's performance under pressure, I wrote a simple load test 
    ```
 
 The test script (`loadtesting/load-tests.js`) sends randomized but valid votes, logging errors and ensuring the system behaves correctly under load.
-
-
 ## The vote process
 
 There are 3 categories of voters:
